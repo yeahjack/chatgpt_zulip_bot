@@ -21,7 +21,7 @@ pip install -r requirements.txt
 - Go to your Zulip organization settings, and navigate to the "Your bots" section.
 - Click the "Add a new bot" button and follow the prompts to create a new bot.
 - Download the configuartion file and move it to this folder. Rename it to `zuliprc`.
-- Define `USER_ID` to the user id of the admin, and "BOT_NAME" where the name is what you gave to the bot when you created it.
+- Define `USER_ID` to the user id of the admin.
 
 4. Start the bot:
 
