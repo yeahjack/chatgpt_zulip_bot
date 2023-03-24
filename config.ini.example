@@ -1,0 +1,4 @@
+[settings]
+OPENAI_API_KEY = your_openai_api_key
+ZULIP_CONFIG = FILENAME
+USER_ID = ZULIP_USER_ID_INT

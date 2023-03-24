@@ -1,7 +1,10 @@
 # chat_gpt.py
 import openai
+from configparser import ConfigParser
 
-OPENAI_API_KEY = "your_openai_api_key_here"
+config = ConfigParser()
+config.read('config.ini')
+OPENAI_API_KEY = config['settings']['OPENAI_API_KEY']
 openai.api_key = OPENAI_API_KEY
 
 

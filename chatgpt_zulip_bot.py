@@ -3,10 +3,13 @@ import zulip
 import re
 from chatgpt import get_chatgpt_response
 import atexit
-import time
+from configparser import ConfigParser
 
-ZULIP_CONFIG = "zuliprc"
-USER_ID = 47
+config = ConfigParser()
+config.read('config.ini')
+
+ZULIP_CONFIG = config['settings']['ZULIP_CONFIG']
+USER_ID = int(config['settings']['USER_ID'])
 
 class ChatGPTZulipBot(zulip.Client):
     def __init__(self, config_file):
