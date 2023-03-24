@@ -31,7 +31,7 @@ python chatgpt_zulip_bot.py
 
 5. Errors
 
-When having errors, the bot will send a message to the admin and set the status to `away`.
+When having errors, the bot will send a message to the admin and set the status to `away` (**Seems the later does not work**).
 
 ## Usage
 
