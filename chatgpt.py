@@ -21,8 +21,5 @@ def get_chatgpt_response(prompt):
             return "Sorry, I couldn't generate a response."
 
     except Exception as e:
-        if "Incorrect API key provided" in e:
-            print('ERROR: Please set your OpenAI API key correctly.')
-        else:
-            print(f"Error: {e}")
-            return "Sorry, there was an error generating a response."
+        print(f"Error: {e}")
+        return "Sorry, there was an error generating a response."
