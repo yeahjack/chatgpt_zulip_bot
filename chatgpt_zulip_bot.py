@@ -11,6 +11,7 @@ config.read('config.ini')
 ZULIP_CONFIG = config['settings']['ZULIP_CONFIG']
 USER_ID = int(config['settings']['USER_ID'])
 
+
 class ChatGPTZulipBot(zulip.Client):
     def __init__(self, config_file):
         super().__init__(config_file=config_file)
@@ -19,12 +20,13 @@ class ChatGPTZulipBot(zulip.Client):
         request = {
             "status_text": "Offline" if status else "Online",
             "away": status,
-            #"emoji_name": "car",
-            #"emoji_code": "1f697",
+            # "emoji_name": "car",
+            # "emoji_code": "1f697",
             "reaction_type": "unicode_emoji",
         }
-        self.call_endpoint(url="/users/me/status", method="POST", request=request)
-        
+        self.call_endpoint(url="/users/me/status",
+                           method="POST", request=request)
+
     def send_notification(self, message):
         self.send_message({
             "type": "private",
@@ -37,15 +39,21 @@ class ChatGPTZulipBot(zulip.Client):
         message_content = msg['content']
         message_type = msg['type']
 
-        # Check if the message is a private message or a mention in a stream
-        if message_type == 'private' or message_content.startswith('@**ChatGPT**'):
-            if message_content.startswith('@**ChatGPT**'):
-                prompt = re.sub('@\*\*ChatGPT\*\*', '', message_content).strip()
-            else:
-                prompt = message_content
+        if message_content.startswith('@**ChatGPT**'):
+            stream_id = msg.get('stream_id', None)
+            topic = msg.get('subject', None)
+            prompt = re.sub('@\*\*ChatGPT\*\*', '', message_content).strip()
+            response = get_chatgpt_response(msg['sender_email'], prompt)
+            self.send_message({
+                "type": "stream",
+                "to": stream_id,
+                "subject": topic,
+                "content": response,
+            })
 
-            response = get_chatgpt_response(prompt)
-
+        if message_type == 'private':
+            prompt = message_content
+            response = get_chatgpt_response(msg['sender_email'], prompt)
             self.send_message({
                 "type": "private",
                 "to": sender_email,
@@ -57,6 +65,7 @@ def on_exit(bot):
     bot.send_notification("NOTICE: The ChatGPT bot is now offline.")
     bot.set_status(True)
 
+
 if __name__ == "__main__":
     bot = ChatGPTZulipBot(ZULIP_CONFIG)
     bot.send_notification("NOTICE: The ChatGPT bot is now online.")
@@ -64,6 +73,5 @@ if __name__ == "__main__":
     print("Successfully started the ChatGPT bot.")
 
     atexit.register(on_exit, bot)
-    
+
     bot.call_on_each_message(bot.process_message)
-    
