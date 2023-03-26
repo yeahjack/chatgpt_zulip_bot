@@ -2,7 +2,18 @@
 
 The ChatGPT Zulip Bot is a bot that responds to users by using the ChatGPT language model. It can be used in any Zulip chat stream or private message.
 
-## Installation
+## Updates
+### 27th March, 2023
+- Upgrade the model from `text-davinci-003` to `gpt-turbo-3.5`. You could configure it in `chatgpt.py`.
+- Add contextual support. The bot could answer your quesetions by contexts. You can type `停止会话` or `end the conversation` to end the current conversation.
+- Trim conversation history supported. The conversation will get trimmed if it exceeds the maximum token size by OpenAI.
+- Fix a bug that leads the bots crash when the conversation is long.
+- Fix a bug that if you mention the bot in a dialogue, the bot would answer you privately.
+
+## Current Bugs
+- Status cannot set to "away" when the bot is down.
+
+# Installation
 
 1. Clone the repository:
 

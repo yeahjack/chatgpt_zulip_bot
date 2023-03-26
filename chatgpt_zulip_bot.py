@@ -1,4 +1,5 @@
 # chat_gpt_zulip_bot.py
+
 import zulip
 import re
 from chatgpt import get_chatgpt_response
@@ -10,7 +11,7 @@ config.read('config.ini')
 
 ZULIP_CONFIG = config['settings']['ZULIP_CONFIG']
 USER_ID = int(config['settings']['USER_ID'])
-
+BOT_ID = int(config['settings']['BOT_ID'])
 
 class ChatGPTZulipBot(zulip.Client):
     def __init__(self, config_file):
@@ -38,27 +39,27 @@ class ChatGPTZulipBot(zulip.Client):
         sender_email = msg['sender_email']
         message_content = msg['content']
         message_type = msg['type']
+        if msg['sender_id'] != BOT_ID:
+            if message_content.startswith('@**ChatGPT**'):
+                stream_id = msg.get('stream_id', None)
+                topic = msg.get('subject', None)
+                prompt = re.sub('@\*\*ChatGPT\*\*', '', message_content).strip()
+                response = get_chatgpt_response(msg['sender_email'], prompt)
+                self.send_message({
+                    "type": "stream",
+                    "to": stream_id,
+                    "subject": topic,
+                    "content": response,
+                })
 
-        if message_content.startswith('@**ChatGPT**'):
-            stream_id = msg.get('stream_id', None)
-            topic = msg.get('subject', None)
-            prompt = re.sub('@\*\*ChatGPT\*\*', '', message_content).strip()
-            response = get_chatgpt_response(msg['sender_email'], prompt)
-            self.send_message({
-                "type": "stream",
-                "to": stream_id,
-                "subject": topic,
-                "content": response,
-            })
-
-        if message_type == 'private':
-            prompt = message_content
-            response = get_chatgpt_response(msg['sender_email'], prompt)
-            self.send_message({
-                "type": "private",
-                "to": sender_email,
-                "content": response,
-            })
+            if message_type == 'private':
+                prompt = message_content
+                response = get_chatgpt_response(msg['sender_email'], prompt)
+                self.send_message({
+                    "type": "private",
+                    "to": sender_email,
+                    "content": response,
+                })
 
 
 def on_exit(bot):
