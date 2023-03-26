@@ -30,7 +30,7 @@ def get_chatgpt_response(user_id, prompt):
             model="text-davinci-003",
             prompt=f"{context}\nAI:",
             temperature=0.5,
-            max_tokens=1200,
+            max_tokens=3500,
             top_p=1,
             frequency_penalty=0.0,
             presence_penalty=0.0,
