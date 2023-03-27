@@ -1,4 +1,4 @@
-# chat_gpt.py
+# chatgpt.py
 import openai
 from configparser import ConfigParser
 import tiktoken
@@ -10,25 +10,29 @@ OPENAI_API_VERSION = config["settings"]["API_VERSION"]
 openai.api_key = OPENAI_API_KEY
 
 user_conversations = {}  # Maintain a dictionary to store conversation history per user
-MAX_CONTENT_LENGTH = 4097 - 100
+MAX_CONTENT_LENGTH = 4097 - 300
 
 
 def trim_conversation_history(history, max_tokens):
+    # Determine the appropriate encoding based on the API version
+    if "gpt-3.5-turbo" in OPENAI_API_VERSION:
+        encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
+    elif "gpt-4" in OPENAI_API_VERSION:
+        encoding = tiktoken.encoding_for_model("gpt-4")
+    elif 'text-embedding-ada' in OPENAI_API_VERSION:
+        encoding = tiktoken.encoding_for_model('text-embedding-ada-002')
+    elif "text-davinci-002" in OPENAI_API_KEY:
+        encoding = tiktoken.encoding_for_model("text-davinci-002")
+    elif 'text-davinci-003' in OPENAI_API_KEY:
+        encoding = tiktoken.encoding_for_model("text-davinci-003")
+    else:
+        return "OpenAI API Version Wrong!"
+
     tokens = 0
     trimmed_history = []
     for message in reversed(history):
-        if (
-            "gpt-3.5-turbo" in OPENAI_API_VERSION
-            or "gpt-4" in OPENAI_API_VERSION
-            or "text-embedding-ada" in OPENAI_API_VERSION
-        ):
-            encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
-            message_tokens = len(encoding.encode(message))
-        elif "text-davinci" in OPENAI_API_KEY:
-            encoding = tiktoken.encoding_for_model("p50k_base")
-            message_tokens = len(encoding.encode(message))
-        else:
-            return "OpenAI API Version Wrong!"
+        # Get the number of tokens for the current message
+        message_tokens = len(encoding.encode(message))
         if tokens + message_tokens <= max_tokens:
             trimmed_history.insert(0, message)
             tokens += message_tokens
@@ -36,6 +40,7 @@ def trim_conversation_history(history, max_tokens):
             break
 
     return trimmed_history
+
 
 
 def get_chatgpt_response(user_id, prompt):
