@@ -16,7 +16,7 @@ def trim_conversation_history(history, max_tokens):
     tokens = 0
     trimmed_history = []
     for message in reversed(history):
-        if 'gpu-3.5-turbo' in OPENAI_API_VERSION:
+        if 'gpt-3.5-turbo' in OPENAI_API_VERSION or 'gpt-4' in OPENAI_API_VERSION or 'text-embedding-ada' in OPENAI_API_VERSION:
             encoding= tiktoken.encoding_for_model("gpt-3.5-turbo")
             message_tokens = len(encoding.encode(message))
         elif 'text-davinci' in OPENAI_API_KEY:
