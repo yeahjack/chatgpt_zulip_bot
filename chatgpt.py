@@ -101,12 +101,12 @@ def get_chatgpt_response(user_id, prompt):
             return "ERROR: OpenAI API rate limit exceeded. Please retry."
 
         except openai.error.OpenAIError as e:
-            print(f"Error: {e}")
             if "Please reduce the length" in str(e):
                 conversation_history = trim_conversation_history(
                     conversation_history, MAX_CONTENT_LENGTH
                 )
             else:
+                print(f"Error: {e}")
                 return "Sorry, there was an error generating a response."
 
         except Exception as e:
