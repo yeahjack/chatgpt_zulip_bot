@@ -1,3 +1,4 @@
 zulip
 openai
 requests
+tiktoken
