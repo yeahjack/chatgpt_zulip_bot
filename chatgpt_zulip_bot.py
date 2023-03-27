@@ -7,11 +7,12 @@ import atexit
 from configparser import ConfigParser
 
 config = ConfigParser()
-config.read('config.ini')
+config.read("config.ini")
 
-ZULIP_CONFIG = config['settings']['ZULIP_CONFIG']
-USER_ID = int(config['settings']['USER_ID'])
-BOT_ID = int(config['settings']['BOT_ID'])
+ZULIP_CONFIG = config["settings"]["ZULIP_CONFIG"]
+USER_ID = int(config["settings"]["USER_ID"])
+BOT_ID = int(config["settings"]["BOT_ID"])
+
 
 class ChatGPTZulipBot(zulip.Client):
     def __init__(self, config_file):
@@ -25,41 +26,46 @@ class ChatGPTZulipBot(zulip.Client):
             # "emoji_code": "1f697",
             "reaction_type": "unicode_emoji",
         }
-        self.call_endpoint(url="/users/me/status",
-                           method="POST", request=request)
+        self.call_endpoint(url="/users/me/status", method="POST", request=request)
 
     def send_notification(self, message):
-        self.send_message({
-            "type": "private",
-            "to": [USER_ID],
-            "content": message,
-        })
+        self.send_message(
+            {
+                "type": "private",
+                "to": [USER_ID],
+                "content": message,
+            }
+        )
 
     def process_message(self, msg):
-        sender_email = msg['sender_email']
-        message_content = msg['content']
-        message_type = msg['type']
-        if msg['sender_id'] != BOT_ID:
-            if message_content.startswith('@**ChatGPT**'):
-                stream_id = msg.get('stream_id', None)
-                topic = msg.get('subject', None)
-                prompt = re.sub('@\*\*ChatGPT\*\*', '', message_content).strip()
-                response = get_chatgpt_response(msg['sender_email'], prompt)
-                self.send_message({
-                    "type": "stream",
-                    "to": stream_id,
-                    "subject": topic,
-                    "content": response,
-                })
+        sender_email = msg["sender_email"]
+        message_content = msg["content"]
+        message_type = msg["type"]
+        if msg["sender_id"] != BOT_ID:
+            if message_content.startswith("@**ChatGPT**"):
+                stream_id = msg.get("stream_id", None)
+                topic = msg.get("subject", None)
+                prompt = re.sub("@\*\*ChatGPT\*\*", "", message_content).strip()
+                response = get_chatgpt_response(msg["sender_email"], prompt)
+                self.send_message(
+                    {
+                        "type": "stream",
+                        "to": stream_id,
+                        "subject": topic,
+                        "content": response,
+                    }
+                )
 
-            if message_type == 'private':
+            if message_type == "private":
                 prompt = message_content
-                response = get_chatgpt_response(msg['sender_email'], prompt)
-                self.send_message({
-                    "type": "private",
-                    "to": sender_email,
-                    "content": response,
-                })
+                response = get_chatgpt_response(msg["sender_email"], prompt)
+                self.send_message(
+                    {
+                        "type": "private",
+                        "to": sender_email,
+                        "content": response,
+                    }
+                )
 
 
 def on_exit(bot):
