@@ -52,9 +52,19 @@ def get_chatgpt_response(user_id, prompt):
         ] = []  # Create a new conversation history for a new user
 
     # Check if user input is "停止会话" or "end the conversation"
-    if prompt == "停止会话" or prompt.lower() == "end the conversation" or prompt.lower() == '/end':
+    if prompt == "停止会话" or prompt.lower() == "end the conversation" or prompt.lower() == "/end":
         user_conversations[user_id] = []  # Clear the conversation history for the user
         return "The conversation has been ended and the context has been cleared."
+    elif prompt == "/help":
+        return """# Usage
+
+To use the bot, mention it in any Zulip stream or send it a private message. You can mention the bot by typing `@bot_name` where the name is what you gave to the bot when you created it.
+Except normal texts, the bot also accepts the following commands
+
+## Commands
+* `/help`: print this usage information.
+* `/end`: end the current conversation. Bot will answer questions based on the context of the conversation. If see a rate limit exceed error after the 3000 token limit is reached in a single conversation, then you must restart the conversation with `/end`.
+"""
 
     conversation_history = user_conversations[user_id]
     conversation_history.append(

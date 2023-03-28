@@ -2,18 +2,6 @@
 
 The ChatGPT Zulip Bot is a bot that responds to users by using the ChatGPT language model. It can be used in any Zulip chat streams    or private messages.
 
-# Updates
-## March 28, 2023
-- Add `/end` to end the current conversation, which is shorter and fits Zulip syntexes.
-
-## March 27, 2023
-- Upgraded the model from `text-davinci-003` to `gpt-3.5-turbo` by default. It can be configured in `config.ini`.
-- Added contextual support, allowing the bot to answer questions based on the context of the conversation. Type `停止会话` or `end the conversation` to end the current conversation.
-- The output will also show numbers of tokens used in the conversation.
-- Implemented conversation history trimming to ensure it stays within OpenAI's maximum token limit.
-- Fixed a bug causing the bot to crash during long conversations.
-- Resolved an issue where the bot would reply privately when mentioned in a group conversation.
-
 # Installation
 
 1. Clone the repository:
@@ -34,19 +22,6 @@ pip install -r requirements.txt
 - Click the "Add a new bot" button and follow the prompts to create a new bot.
 - Download the configuartion file and move it to this folder.
 - Rename `config.ini.example` to `config.ini` and fill in the values, note that you do not have to add commas (`" "`) around the values.
-
-
-4. Start the bot:
-
-```bash
-python chatgpt_zulip_bot.py
-```
-
-5. Errors
-
-When having errors, the bot will send a message to the admin and set the status to `away` (**Seems the later does not work**).
-
-# `config.ini` Initializtion
 Here are the explanations of parameters in `config.ini`.
 
 | Parameters | Details |
@@ -57,12 +32,11 @@ Here are the explanations of parameters in `config.ini`.
 | BOT_ID | The ID of the zulip bot. Used for positioning.
 | API_VERSION | The version of OpenAI models. e.g. `gpt-3.5-turbo` |
 
+4. Start the bot:
 
-# Usage
-
-To use the bot, mention it in any Zulip stream or send it a private message. You can mention the bot by typing `@bot_name` where the name is what you gave to the bot when you created it.
-
-The bot will respond to your message by generating text using the ChatGPT language model. You can customize the bot's behavior by modifying the `chatgpt_zulip_bot.py` file.
+```bash
+python chatgpt_zulip_bot.py
+```
 
 ## Proxies
 
@@ -74,12 +48,16 @@ os.environ["https_proxy"] = "http://127.0.0.1:7890"
 ```
 Remember to replace both strings to your proxy address and port.
 
-# Current Bugs
-- The bot's status cannot be set to `away` when it's offline or not running.
+# Usage
 
-# Improvements Ahead
-- Output the content by stream - will discover the zulip API to see whether it is supported.
+To use the bot, mention it in any Zulip stream or send it a private message. You can mention the bot by typing `@bot_name` where the name is what you gave to the bot when you created it.
+Except normal texts, the bot also accepts the following commands
 
-# Contact
+## Commands
+* `/help`: print this usage information.
+* `/end`: end the current conversation. Bot will answer questions based on the context of the conversation. If a conversation reaches its 3000 token limit (you will see a message: "ERROR: OpenAI API rate limit exceeded. Please retry."), then you must restart the conversation with `/end`.
 
-Feel free to contact me or leave an issue if you have any questions or suggestions.
+# Contributing and bug reports
+
+Feel free to leave an [issue](https://github.com/yeahjack/chatgpt_zulip_bot/issues) if you have any questions or suggestions.
+Pull requests are also welcomed. If you are interested in contributing this project, a good place to start is the `chatgpt_zulip_bot.py` and `chatgpt.py` files. You can customize the bot's behavior by modifying it.
