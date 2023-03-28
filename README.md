@@ -3,6 +3,9 @@
 The ChatGPT Zulip Bot is a bot that responds to users by using the ChatGPT language model. It can be used in any Zulip chat stream or private message.
 
 # Updates
+## March 28, 2023
+- Add `!end` to end the current conversation, which is shorter.
+
 ## March 27, 2023
 - Upgraded the model from `text-davinci-003` to `gpt-3.5-turbo`. It can be configured in `config.ini`.
 - Added contextual support, allowing the bot to answer questions based on the context of the conversation. Type `停止会话` or `end the conversation` to end the current conversation.

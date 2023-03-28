@@ -52,7 +52,7 @@ def get_chatgpt_response(user_id, prompt):
         ] = []  # Create a new conversation history for a new user
 
     # Check if user input is "停止会话" or "end the conversation"
-    if prompt == "停止会话" or prompt.lower() == "end the conversation":
+    if prompt == "停止会话" or prompt.lower() == "end the conversation" or prompt.lower() == '!end':
         user_conversations[user_id] = []  # Clear the conversation history for the user
         return "The conversation has been ended and the context has been cleared."
 
