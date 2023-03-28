@@ -55,7 +55,7 @@ Except normal texts, the bot also accepts the following commands
 
 ## Commands
 * `/help`: print this usage information.
-* `/end`: end the current conversation. Bot will answer questions based on the context of the conversation. If see a rate limit exceed error after the 3000 token limit is reached in a single conversation, then you must restart the conversation with `/end`.
+* `/end`: end the current conversation. Bot will answer questions based on the context of the conversation. If you see a rate limit exceed error after the 3000 token limit is reached in a single conversation, then you must restart the conversation with `/end`.
 
 # Contributing and bug reports
 
