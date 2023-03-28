@@ -1,6 +1,6 @@
 # ChatGPT Zulip Bot
 
-The ChatGPT Zulip Bot is a bot that responds to users by using the ChatGPT language model. It can be used in any Zulip chat stream or private message.
+The ChatGPT Zulip Bot is a bot that responds to users by using the ChatGPT language model. It can be used in any Zulip chat streams    or private messages.
 
 # Updates
 ## March 28, 2023
@@ -22,7 +22,7 @@ The ChatGPT Zulip Bot is a bot that responds to users by using the ChatGPT langu
 git clone https://github.com/yeahjack/chatgpt_zulip_bot.git
 ```
 
-2. Install the required dependencies:
+2. Install the required dependencies (You might need to create a virtual env if you like):
 
 ```bash
 pip install -r requirements.txt
@@ -33,7 +33,7 @@ pip install -r requirements.txt
 - Go to your Zulip organization settings, and navigate to the "Your bots" section.
 - Click the "Add a new bot" button and follow the prompts to create a new bot.
 - Download the configuartion file and move it to this folder.
-- Rename `config.ini.example` to `config.ini` and fill in the values, note that you do not have to add `" "` around the values.
+- Rename `config.ini.example` to `config.ini` and fill in the values, note that you do not have to add commas (`" "`) around the values.
 
 
 4. Start the bot:
