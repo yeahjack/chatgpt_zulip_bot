@@ -1,6 +1,6 @@
 # ChatGPT Zulip Bot
 
-The ChatGPT Zulip Bot is a bot that responds to users by using the ChatGPT language model. It can be used in any Zulip chat streams    or private messages.
+The ChatGPT Zulip Bot is a bot that responds to users by using the ChatGPT language model. It can be used in any Zulip chat streams or private messages.
 
 # Installation
 
