@@ -4,7 +4,7 @@ The ChatGPT Zulip Bot is a bot that responds to users by using the ChatGPT langu
 
 # Updates
 ## March 28, 2023
-- Add `!end` to end the current conversation, which is shorter.
+- Add `/end` to end the current conversation, which is shorter and fits Zulip syntexes.
 
 ## March 27, 2023
 - Upgraded the model from `text-davinci-003` to `gpt-3.5-turbo` by default. It can be configured in `config.ini`.
