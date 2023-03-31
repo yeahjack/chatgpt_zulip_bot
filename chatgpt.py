@@ -42,6 +42,34 @@ def trim_conversation_history(history, max_tokens):
     return trimmed_history
 
 
+def prompt_manager(message):
+    # Academic prompts which might be helpful. Credits to https://github.com/binary-husky/chatgpt_academic/blob/b1e33b0f7aa9e69061d813262eb36ac297d49d0d/functional.py
+    if message.startswith('/polish_en '):
+        return "Below is a paragraph from an academic paper. Polish the writing to meet the academic style, \
+improve the spelling, grammar, clarity, concision and overall readability. When neccessary, rewrite the whole sentence. \
+Furthermore, list all modification and explain the reasons to do so.\n\n" + message
+
+    elif message.startswith('/polish_zh '):
+        return "作为一名中文学术论文写作改进助理，你的任务是改进所提供文本的拼写、语法、清晰、简洁和整体可读性，同时分解长句，减少重复，并提供改进建议。请只提供文本的更正版本，避免包括解释。请编辑以下文本：\n\n" + message
+
+    elif message.startswith('/find_grammar_mistakes '):
+        return "Below is a paragraph from an academic paper. Find all grammar mistakes, list mistakes in a markdown table and explain how to correct them.\n\n" + message
+
+    elif message.startswith('/zh-en '):
+        return "As an English-Chinese translator, your task is to accurately translate text between the two languages. \
+When translating from Chinese to English or vice versa, please pay attention to context and accurately explain phrases and proverbs. \
+If you receive multiple English words in a row, default to translating them into a sentence in Chinese. \
+Below is the text you need to translate: \n\n" + message
+
+    elif message.startswith('/en_ac '):
+        return "Please translate following sentence to English with academic writing, and provide some related authoritative examples: \n\n" + message
+
+    elif message.startswith('/ex_code_zh ') or message.startswith('/ex_code_zh\n'):
+        return "请解释以下代码：\n```\n" + message
+
+    else:
+        return message
+
 
 def get_chatgpt_response(user_id, prompt):
     global user_conversations
@@ -53,7 +81,8 @@ def get_chatgpt_response(user_id, prompt):
 
     # Check if user input is "停止会话" or "end the conversation"
     if prompt == "停止会话" or prompt.lower() == "end the conversation" or prompt.lower() == "/end":
-        user_conversations[user_id] = []  # Clear the conversation history for the user
+        # Clear the conversation history for the user
+        user_conversations[user_id] = []
         return "The conversation has been ended and the context has been cleared."
     elif prompt == "/help":
         return """# Usage
@@ -63,8 +92,17 @@ Except normal texts, the bot also accepts the following commands
 
 ## Commands
 * `/help`: print this usage information.
-* `/end`: end the current conversation. Bot will answer questions based on the context of the conversation. If see a rate limit exceed error after the 3000 token limit is reached in a single conversation, then you must restart the conversation with `/end`.
+* `/end`: end the current / start a new conversation. Bot will answer questions based on the context of the conversation. If see a rate limit exceed error after approximately 3500 token limit is reached in a single conversation, then you must restart the conversation with `/end`.
+* `/polish_en`: polish the writing to meet the academic style, improve the spelling, grammar, clarity, concision and overall readability, and list all modification and explainations.
+* `/polish_zh`: 使用中文改进所提供文本的拼写、语法、清晰、简洁和整体可读性，同时分解长句，减少重复。
+* `/find_grammar_mistakes`: find all grammar mistakes, list mistakes in a table and explain how to correct them.
+* `/zh-en`: translate text between the Chinese and English. 中英互译。
+* `/en_ac`: translate sentence to English with academic writing, and provide related authoritative examples. 翻译至学术英语，并提供相关权威样例。
+* `/ex_code_zh`: 用中文解释代码。
+
 """
+    else:
+        prompt = prompt_manager(prompt)
 
     conversation_history = user_conversations[user_id]
     conversation_history.append(
@@ -94,7 +132,8 @@ Except normal texts, the bot also accepts the following commands
             if response.choices:
                 role = response["choices"][0]["message"]["role"]
                 reply = (
-                    response["choices"][0]["message"]["content"].strip().replace("", "")
+                    response["choices"][0]["message"]["content"].strip().replace(
+                        "", "")
                 )
                 conversation_history.append(
                     f"{role}: {reply}"

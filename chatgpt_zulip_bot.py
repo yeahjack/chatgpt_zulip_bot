@@ -18,16 +18,6 @@ class ChatGPTZulipBot(zulip.Client):
     def __init__(self, config_file):
         super().__init__(config_file=config_file)
 
-    def set_status(self, status):
-        request = {
-            "status_text": "Offline" if status else "Online",
-            "away": status,
-            # "emoji_name": "car",
-            # "emoji_code": "1f697",
-            "reaction_type": "unicode_emoji",
-        }
-        self.call_endpoint(url="/users/me/status", method="POST", request=request)
-
     def send_notification(self, message):
         self.send_message(
             {
@@ -70,13 +60,11 @@ class ChatGPTZulipBot(zulip.Client):
 
 def on_exit(bot):
     bot.send_notification("NOTICE: The ChatGPT bot is now offline.")
-    bot.set_status(True)
 
 
 if __name__ == "__main__":
     bot = ChatGPTZulipBot(ZULIP_CONFIG)
     bot.send_notification("NOTICE: The ChatGPT bot is now online.")
-    bot.set_status(False)
     print("Successfully started the ChatGPT bot.")
 
     atexit.register(on_exit, bot)
