@@ -14,7 +14,8 @@ MAX_CONTENT_LENGTH = 4097 - 300
 
 
 def trim_conversation_history(history, max_tokens):
-    # Determine the appropriate encoding based on the API version
+    # Determine the appropriate encoding based on the API version.
+    # Ref: https://github.com/openai/openai-cookbook/blob/main/examples/How_to_count_tokens_with_tiktoken.ipynb
     if "gpt-3.5-turbo" in OPENAI_API_VERSION:
         encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
     elif "gpt-4" in OPENAI_API_VERSION:
@@ -43,7 +44,8 @@ def trim_conversation_history(history, max_tokens):
 
 
 def prompt_manager(message):
-    # Academic prompts which might be helpful. Credits to https://github.com/binary-husky/chatgpt_academic/blob/b1e33b0f7aa9e69061d813262eb36ac297d49d0d/functional.py
+    # Academic prompts which might be helpful.
+    # Credits to https://github.com/binary-husky/chatgpt_academic/blob/b1e33b0f7aa9e69061d813262eb36ac297d49d0d/functional.py
     if message.startswith('/polish_en '):
         return "Below is a paragraph from an academic paper. Polish the writing to meet the academic style, \
 improve the spelling, grammar, clarity, concision and overall readability. When neccessary, rewrite the whole sentence. \
