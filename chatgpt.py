@@ -39,8 +39,10 @@ def trim_conversation_history(history, max_tokens):
             tokens += message_tokens
         else:
             break
-
-    return trimmed_history
+    if tokens > 0:
+        return trimmed_history
+    else:
+        return "Cannot Trim Conversation History! Please start a new conversation."
 
 
 def prompt_manager(message):
@@ -105,11 +107,12 @@ Except normal texts, the bot also accepts the following commands
 """
     else:
         prompt = prompt_manager(prompt)
-
-    conversation_history = user_conversations[user_id]
-    conversation_history.append(
-        f"User: {prompt}"
-    )  # Add user input to conversation history
+        # If use academic prompts, then context will not be recorded.
+        if not prompt.startswith("/"):
+            conversation_history = user_conversations[user_id]
+            conversation_history.append(
+                f"User: {prompt}"
+            )  # Add user input to conversation history
 
     while True:
         messages = [
