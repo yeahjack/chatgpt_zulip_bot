@@ -1,4 +1,9 @@
 # Updates
+## March 31, 2023
+- Improved academic prompts added to the bot, type `/help` to access them.
+- Context feature now disabled when using academic prompts.
+- Fixed issue with conversation trimming when single prompt exceeding token limit.
+
 ## March 28, 2023
 - Add `/end` to end the current conversation, which is shorter and fits Zulip syntexes.
 
