@@ -2,3 +2,4 @@ zulip
 openai
 requests
 tiktoken
+pytest

@@ -26,7 +26,8 @@ Except normal texts, the bot also accepts the following commands
 ## Commands
 * `/help`: print this usage information.
 * `/end`: end the current and start a new conversation. Bot will answer questions based on the context of the conversation. If see a rate limit exceed error after approximately 3500 token limit is reached in a single conversation, then you must restart the conversation with `/end`.
-""" + "\n".join(["* `%s`: prompt with - %s"%(k, v) for k, v in prompt_table.items()])
+""" + "\n".join(["* `%s`: prompt with - %s" % (k, v) for k, v in prompt_table.items()])
+
 
 class OpenAI(object):
     def __init__(self, api_version, api_key, max_content_length=4097-300):
@@ -34,7 +35,8 @@ class OpenAI(object):
         self.api_version = api_version
         self.api_key = api_key
         openai.api_key = api_key
-        self.user_conversations = {}  # Maintain a dictionary to store conversation history per user
+        # Maintain a dictionary to store conversation history per user
+        self.user_conversations = {}
         # maximum number of tokens in a single conversation
         self.max_content_length = max_content_length
 
@@ -151,6 +153,8 @@ class OpenAI(object):
                 return "Sorry, there was an error generating a response."
 
 # (command_name, description, prompt)
+
+
 def prompt_manager(message):
     # Academic prompts which might be helpful.
     # Credits to https://github.com/binary-husky/chatgpt_academic/blob/b1e33b0f7aa9e69061d813262eb36ac297d49d0d/functional.py
