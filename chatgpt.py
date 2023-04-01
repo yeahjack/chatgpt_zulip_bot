@@ -25,8 +25,8 @@ Except normal texts, the bot also accepts the following commands
 
 ## Commands
 * `/help`: print this usage information.
-* `/end`: end the current / start a new conversation. Bot will answer questions based on the context of the conversation. If see a rate limit exceed error after approximately 3500 token limit is reached in a single conversation, then you must restart the conversation with `/end`.
-* """ + "\n".join(["* `%s`: prompt with - %s"%(k, v) for k, v in prompt_table.items()])
+* `/end`: end the current and start a new conversation. Bot will answer questions based on the context of the conversation. If see a rate limit exceed error after approximately 3500 token limit is reached in a single conversation, then you must restart the conversation with `/end`.
+""" + "\n".join(["* `%s`: prompt with - %s"%(k, v) for k, v in prompt_table.items()])
 
 class OpenAI(object):
     def __init__(self, api_version, api_key, max_content_length=4097-300):
@@ -85,13 +85,12 @@ class OpenAI(object):
             return help_str
         else:
             prompt = prompt_manager(prompt)
-            # If use academic prompts, then context will not be recorded.
+            conversation_history = self.user_conversations[user_id]
             if not prompt.startswith("/"):
-                conversation_history = self.user_conversations[user_id]
+                # If use academic prompts, then context will not be recorded.
                 conversation_history.append(
                     f"User: {prompt}"
                 )  # Add user input to conversation history
-
         while True:
             messages = [
                 {
@@ -140,8 +139,8 @@ class OpenAI(object):
 
             except openai.error.OpenAIError as e:
                 if "Please reduce the length" in str(e):
-                    conversation_history = trim_conversation_history(
-                        conversation_history, self.max_content_length, self.api_version
+                    conversation_history = self.trim_conversation_history(
+                        conversation_history, self.max_content_length
                     )
                 else:
                     print(f"Error: {e}")
@@ -155,10 +154,8 @@ class OpenAI(object):
 def prompt_manager(message):
     # Academic prompts which might be helpful.
     # Credits to https://github.com/binary-husky/chatgpt_academic/blob/b1e33b0f7aa9e69061d813262eb36ac297d49d0d/functional.py
-    name, msg = message.split(" ", 1)
-    if name in prompt_table:
-        return prompt_table[name] + "\n\n" + msg
-    else:
-        print("command not found:", name)
-        return message
-
+    if message.startswith("/") and " " in message:
+        name, msg = message.split(" ", 1)
+        prompt = prompt_table.get(name)
+        return (prompt + "\n\n" if prompt else name) + msg
+    return message
