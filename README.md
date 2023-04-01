@@ -1,6 +1,6 @@
 # ChatGPT Zulip Bot
 
-[![pytest](https://github.com/yeahjack/chatgpt_zulip_bot/actions/workflows/ci.yml/badge.svg)](https://github.com/yeahjack/chatgpt_zulip_bot/actions/workflows/ci.yml)
+![visitors](https://visitor-badge.glitch.me/badge?page_id=yeahjack.chatgpt_zulip_bot&left_color=green&right_color=blue)
 
 The ChatGPT Zulip Bot is a bot that responds to users by using the ChatGPT language model. It can be used in any Zulip chat streams or private messages.
 

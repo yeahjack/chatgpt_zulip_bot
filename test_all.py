@@ -1,3 +1,5 @@
+# Note that this test file should ONLY be tested locally!
+
 import pytest
 from chatgpt import OpenAI
 from configparser import ConfigParser
