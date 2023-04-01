@@ -7,11 +7,11 @@ import os
 api_version = os.environ["API_VERSION"]
 api_key = os.environ["OPENAI_API_KEY"]
 
+
 @pytest.fixture
 # Test for chatgpt.py
 def openai_object():
     return OpenAI(api_version=api_version, api_key=api_key)
-
 
 
 def test_trim_conversation_history(openai_object):
@@ -67,4 +67,3 @@ def test_chatgpt_response_strings(openai_object):
     finally:
         # Clear the conversation history for test cases.
         openai_object.user_conversations[0] = []
-
