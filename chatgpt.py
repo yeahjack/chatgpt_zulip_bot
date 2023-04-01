@@ -60,9 +60,13 @@ Furthermore, list all modification and explain the reasons to do so.\n\n" + mess
         return "Below is a paragraph from an academic paper. Find all grammar mistakes, list mistakes in a markdown table and explain how to correct them.\n\n" + message
 
     elif message.startswith('/zh-en '):
-        return "As an English-Chinese translator, your task is to accurately translate text between the two languages. \
-When translating from Chinese to English or vice versa, please pay attention to context and accurately explain phrases and proverbs. \
-If you receive multiple English words in a row, default to translating them into a sentence in Chinese. \
+        return "As a translator, your task is to accurately translate text from Chinese to English. \
+Please pay attention to context and accurately explain phrases and proverbs. \
+Below is the text you need to translate: \n\n" + message
+
+    elif message.startswith('/en-zh '):
+        return "As a translator, your task is to accurately translate text from English to Chinese. \
+Please pay attention to context and accurately explain phrases and proverbs. \
 Below is the text you need to translate: \n\n" + message
 
     elif message.startswith('/en_ac '):
@@ -100,7 +104,8 @@ Except normal texts, the bot also accepts the following commands
 * `/polish_en`: polish the writing to meet the academic style, improve the spelling, grammar, clarity, concision and overall readability, and list all modification and explainations.
 * `/polish_zh`: 使用中文改进所提供文本的拼写、语法、清晰、简洁和整体可读性，同时分解长句，减少重复。
 * `/find_grammar_mistakes`: find all grammar mistakes, list mistakes in a table and explain how to correct them.
-* `/zh-en`: translate text between the Chinese and English. 中英互译。
+* `/zh-en`: translate text from Chinese to English. 中译英。
+* `/en-zh`: translate text from English to Chinese. 英译中。
 * `/en_ac`: translate sentence to English with academic writing, and provide related authoritative examples. 翻译至学术英语，并提供相关权威样例。
 * `/ex_code_zh`: 用中文解释代码。
 
