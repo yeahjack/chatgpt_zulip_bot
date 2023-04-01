@@ -1,19 +1,17 @@
-# Note that this test file should ONLY be tested locally!
-
 import pytest
 from chatgpt import OpenAI
 from configparser import ConfigParser
 import tiktoken
+import os
 
-
-config = ConfigParser()
-config.read("config.ini")
-
+api_version = os.environ["API_VERSION"]
+api_key = os.environ["OPENAI_API_KEY"]
 
 @pytest.fixture
 # Test for chatgpt.py
 def openai_object():
-    return OpenAI(api_version=config["settings"]["API_VERSION"], api_key=config["settings"]["OPENAI_API_KEY"])
+    return OpenAI(api_version=api_version, api_key=api_key)
+
 
 
 def test_trim_conversation_history(openai_object):
