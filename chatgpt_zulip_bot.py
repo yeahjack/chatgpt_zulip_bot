@@ -2,8 +2,10 @@
 
 import zulip
 import re
-from chatgpt import get_chatgpt_response, OpenAI
+from chatgpt import OpenAI
 import atexit
+from configparser import ConfigParser
+
 class ChatGPTZulipBot(zulip.Client):
     def __init__(self, config_file, user_id, bot_id, ai):
         super().__init__(config_file=config_file)
@@ -55,12 +57,9 @@ class ChatGPTZulipBot(zulip.Client):
 def on_exit(bot):
     bot.send_notification("NOTICE: The ChatGPT bot is now offline.")
 
-
-if __name__ == "__main__":
-    from configparser import ConfigParser
-
+def serve(configfile):
     config = ConfigParser()
-    config.read("config.ini")
+    config.read(configfile)
 
     OPENAI_API_KEY = config["settings"]["OPENAI_API_KEY"]
     OPENAI_API_VERSION = config["settings"]["API_VERSION"]
@@ -77,3 +76,6 @@ if __name__ == "__main__":
     atexit.register(on_exit, bot)
 
     bot.call_on_each_message(bot.process_message)
+
+if __name__ == "__main__":
+    serve("config.ini")
