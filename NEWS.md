@@ -1,7 +1,7 @@
 # Updates
 ## April 2, 2023
 - Fixed bugs during the refactoring.
-- Improve the pytest support. Note that the pytest file should ONLY be runned locally!
+- Improve the pytest support.
 
 ## April 1, 2023
 - Refactored the codes by [@GiggleLiu](https://github.com/GiggleLiu) to obey the DRY principle. Thanks for his contribution!
