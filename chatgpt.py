@@ -1,6 +1,7 @@
 # chatgpt.py
 import openai
 import tiktoken
+import logging
 
 prompt_table = {
     "/polish_en": "Below is a paragraph from an academic paper. Polish the writing to meet the academic style, \
@@ -26,7 +27,7 @@ Except normal texts, the bot also accepts the following commands
 ## Commands
 * `/help`: print this usage information.
 * `/end`: end the current and start a new conversation. Bot will answer questions based on the context of the conversation. If see a rate limit exceed error after approximately 3500 token limit is reached in a single conversation, then you must restart the conversation with `/end`.
-""" + "\n".join(["* `%s`: prompt with - %s" % (k, v) for k, v in prompt_table.items()])
+""" + "\n".join(["* `%s`: (Prompt) %s" % (k, v) for k, v in prompt_table.items()])
 
 
 class OpenAI(object):
@@ -86,13 +87,16 @@ class OpenAI(object):
         elif prompt == "/help":
             return help_str
         else:
-            prompt = prompt_manager(prompt)
+            prompt, ret_code = prompt_manager(prompt)
             conversation_history = self.user_conversations[user_id]
-            if not prompt.startswith("/"):
+            if ret_code == 0:     # context free
                 # If use academic prompts, then context will not be recorded.
                 conversation_history.append(
                     f"User: {prompt}"
                 )  # Add user input to conversation history
+            elif ret_code == 2:  # command not found
+                return prompt
+        logging.info(f"API call from user: {user_id}")
         while True:
             messages = [
                 {
@@ -124,19 +128,19 @@ class OpenAI(object):
                     )  # Add AI response to conversation history
                     return (
                         reply
-                        + "\n------\nPrompt tokens used: "
-                        + str(response.usage.prompt_tokens)
-                        + "\nAnswer tokens used: "
-                        + str(response.usage.completion_tokens)
-                        + "\nTotal tokens used: "
-                        + str(response.usage.total_tokens)
+                        + "\n------\nTokens used: "
+                        + str(response.usage.prompt_tokens) + " (prompt) + "
+                        + str(response.usage.completion_tokens) + " (answer)"
+                        + " = " + str(response.usage.total_tokens) + "/" + str(self.max_content_length)
                     )
                 else:
-                    return "Sorry, I couldn't generate a response."
+                    err_msg = "Sorry, I couldn't generate a response."
+                    logging.error(err_msg)
+                    return err_msg
 
             except openai.error.RateLimitError:
-                err_msg = "ERROR: OpenAI API rate limit exceeded. Please end the conversation by typing `\\end` or retry."
-                print(err_msg)
+                err_msg = "Sorry, OpenAI API rate limit exceeded. Please end the conversation by typing `\\end` or retry."
+                logging.error(err_msg)
                 return err_msg
 
             except openai.error.OpenAIError as e:
@@ -145,21 +149,35 @@ class OpenAI(object):
                         conversation_history, self.max_content_length
                     )
                 else:
-                    print(f"Error: {e}")
+                    logging.error(f"{e}")
                     return "Sorry, there was an error generating a response."
 
             except Exception as e:
-                print(f"Error: {e}")
+                logging.error(f"{e}")
                 return "Sorry, there was an error generating a response."
 
-# (command_name, description, prompt)
-
-
+# take a message as input, returns a prompt message and a return code
+# return code 0: command message without context
+# return code 1: normal contextual message
+# return code 2: command not found
 def prompt_manager(message):
     # Academic prompts which might be helpful.
     # Credits to https://github.com/binary-husky/chatgpt_academic/blob/b1e33b0f7aa9e69061d813262eb36ac297d49d0d/functional.py
-    if message.startswith("/") and " " in message:
-        name, msg = message.split(" ", 1)
-        prompt = prompt_table.get(name)
-        return (prompt + "\n\n" if prompt else name) + msg
-    return message
+    if message.startswith("/"):
+        # get command name and message
+        result = message.split(" ", 1)
+        if len(result) > 1:  # has space
+            name, msg = result
+        else:
+            name, msg = result[0], ""
+        # get prompt and return code from name
+        if name in prompt_table:
+            prompt = prompt_table[name]
+            logging.info(f"Command hit: {name}")
+            return prompt + "\n\n" + msg, 0
+        else:
+            msg = f"Sorry, command not found: `{name}`, type `/help` to get the list of commands."
+            logging.error(msg)
+            return msg, 2
+    else:
+        return message, 1
