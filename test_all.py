@@ -21,7 +21,7 @@ def test_trim_conversation_history(openai_object):
         elif "gpt-4" in api_version:
             encoding = tiktoken.encoding_for_model("gpt-4")
         else:
-            raise ValueError("Unsupported API version")
+            raise ValueError("Unsupported API version, your API version is: " + api_version)
         return len(encoding.encode(message))
 
     history = [
