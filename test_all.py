@@ -1,11 +1,11 @@
 import pytest
-from chatgpt import OpenAI
+from chatgpt import OpenAI, prompt_manager
 from configparser import ConfigParser
 import tiktoken
 import os
 
-api_version = os.environ["API_VERSION"]
-api_key = os.environ["OPENAI_API_KEY"]
+api_version = os.environ.get("API_VERSION")
+api_key = os.environ.get("OPENAI_API_KEY")
 
 
 @pytest.fixture
@@ -67,3 +67,19 @@ def test_chatgpt_response_strings(openai_object):
     finally:
         # Clear the conversation history for test cases.
         openai_object.user_conversations[0] = []
+
+def test_prompt_manager():
+    # incorrect command
+    msg, code = prompt_manager("/zh-end asdf")
+    assert msg == 'Sorry, command not found: `/zh-end`, type `/help` to get the list of commands.'
+    assert code == 2
+
+    # correct command
+    msg, code = prompt_manager("/zh-en asdf")
+    assert msg == 'As a translator, your task is to accurately translate text from Chinese to English. Please pay attention to context and accurately explain phrases and proverbs. Below is the text you need to translate: \n\nasdf'
+    assert code == 0
+    
+    # contextual text information
+    msg, code = prompt_manager("zh-en asdf")
+    assert msg == 'zh-en asdf'
+    assert code == 1
