@@ -59,6 +59,10 @@ Except normal texts, the bot also accepts the following commands
 * `/help`: print this usage information.
 * `/end`: end the current conversation. Bot will answer questions based on the context of the conversation. If a conversation reaches its 3000 token limit (you will see a message: "ERROR: OpenAI API rate limit exceeded. Please retry."), then you must restart the conversation with `/end`.
 
+# Testing
+
+If you forked this repo and did some changes, you can run the tests to make sure everything is working fine. Each time you push a commit, the tests will be automatically run by GitHub Actions. Note that you need to set `API_VERSION` and `OPENAI_API_KEY` in GitHub secrets.
+
 # Contributing and bug reports
 
 Feel free to leave an [issue](https://github.com/yeahjack/chatgpt_zulip_bot/issues) if you have any questions or suggestions.
