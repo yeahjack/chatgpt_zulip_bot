@@ -84,4 +84,5 @@ def serve(configfile):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(filename="bot.log")
     serve("config.ini")

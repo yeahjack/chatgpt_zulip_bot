@@ -1,5 +1,8 @@
 # Updates
 ## April 2, 2023
+- Use logging instead of printing.
+
+## April 2, 2023
 - Fixed bugs during the refactoring.
 - Improve the pytest support.
 
