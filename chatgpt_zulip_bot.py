@@ -6,6 +6,7 @@ from chatgpt import OpenAI
 import atexit
 from configparser import ConfigParser
 
+
 class ChatGPTZulipBot(zulip.Client):
     def __init__(self, config_file, user_id, bot_id, ai):
         super().__init__(config_file=config_file)
@@ -31,8 +32,10 @@ class ChatGPTZulipBot(zulip.Client):
             if message_content.startswith("@**ChatGPT**"):
                 stream_id = msg.get("stream_id", None)
                 topic = msg.get("subject", None)
-                prompt = re.sub("@\*\*ChatGPT\*\*", "", message_content).strip()
-                response = self.ai.get_chatgpt_response(msg["sender_email"], prompt)
+                prompt = re.sub("@\*\*ChatGPT\*\*", "",
+                                message_content).strip()
+                response = self.ai.get_chatgpt_response(
+                    msg["sender_email"], prompt)
                 self.send_message(
                     {
                         "type": "stream",
@@ -44,7 +47,8 @@ class ChatGPTZulipBot(zulip.Client):
 
             if message_type == "private":
                 prompt = message_content
-                response = self.ai.get_chatgpt_response(msg["sender_email"], prompt)
+                response = self.ai.get_chatgpt_response(
+                    msg["sender_email"], prompt)
                 self.send_message(
                     {
                         "type": "private",
@@ -56,6 +60,7 @@ class ChatGPTZulipBot(zulip.Client):
 
 def on_exit(bot):
     bot.send_notification("NOTICE: The ChatGPT bot is now offline.")
+
 
 def serve(configfile):
     config = ConfigParser()
@@ -76,6 +81,7 @@ def serve(configfile):
     atexit.register(on_exit, bot)
 
     bot.call_on_each_message(bot.process_message)
+
 
 if __name__ == "__main__":
     serve("config.ini")
