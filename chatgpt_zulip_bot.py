@@ -5,6 +5,7 @@ import re
 from chatgpt import OpenAI
 import atexit
 from configparser import ConfigParser
+import logging
 
 
 class ChatGPTZulipBot(zulip.Client):
