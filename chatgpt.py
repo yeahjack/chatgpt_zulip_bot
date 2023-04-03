@@ -89,7 +89,7 @@ class OpenAI(object):
         else:
             prompt, ret_code = prompt_manager(prompt)
             conversation_history = self.user_conversations[user_id]
-            if ret_code == 0:     # context free
+            if ret_code == 1:     # update context
                 # If use academic prompts, then context will not be recorded.
                 conversation_history.append(
                     f"User: {prompt}"
