@@ -151,11 +151,11 @@ class OpenAI(object):
                     )
                 else:
                     logging.error(f"An error occurred on line {e.__traceback__.tb_lineno}: {e}")
-                    return f"An error occurred on line {e.__traceback__.tb_lineno}: {e}"
+                    return f"An error occurred."
 
             except Exception as e:
                 logging.error(f"An error occurred on line {e.__traceback__.tb_lineno}: {e}")
-                return f"An error occurred on line {e.__traceback__.tb_lineno}: {e}"
+                return f"An error occurred."
 
 # take a message as input, returns a prompt message and a return code
 # return code 0: command message: no context
