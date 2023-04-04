@@ -89,8 +89,8 @@ class OpenAI(object):
         else:
             prompt, ret_code = prompt_manager(prompt)
             conversation_history = self.user_conversations[user_id]
-            if ret_code == 1:     # update context
-                # If use academic prompts, then context will not be recorded.
+            if ret_code == 1: 
+                # Contexual conversation
                 conversation_history.append(
                     f"User: {prompt}"
                 )  # Add user input to conversation history
@@ -104,11 +104,12 @@ class OpenAI(object):
                     "content": "You are an AI language model trained to assist with a variety of tasks.",
                 }
             ]  # System message for context
-
-            for message in conversation_history:
-                role, content = message.split(": ", 1)
-                messages.append({"role": role.lower(), "content": content})
-
+            if ret_code == 0:
+                messages.append({'role': 'user', 'content': prompt})
+            else:
+                for message in conversation_history:
+                    role, content = message.split(": ", 1)
+                    messages.append({"role": role.lower(), "content": content})
             try:
                 response = openai.ChatCompletion.create(
                     model=self.api_version,
@@ -139,7 +140,7 @@ class OpenAI(object):
                     return err_msg
 
             except openai.error.RateLimitError:
-                err_msg = "Sorry, OpenAI API rate limit exceeded. Please end the conversation by typing `\\end` or retry."
+                err_msg = "Sorry, OpenAI API rate limit exceeded. Please end the conversation by typing `/end` or retry."
                 logging.error(err_msg)
                 return err_msg
 
@@ -149,15 +150,15 @@ class OpenAI(object):
                         conversation_history, self.max_content_length
                     )
                 else:
-                    logging.error(f"{e}")
-                    return "Sorry, there was an error generating a response."
+                    logging.error(f"An error occurred on line {e.__traceback__.tb_lineno}: {e}")
+                    return f"An error occurred on line {e.__traceback__.tb_lineno}: {e}"
 
             except Exception as e:
-                logging.error(f"{e}")
-                return "Sorry, there was an error generating a response."
+                logging.error(f"An error occurred on line {e.__traceback__.tb_lineno}: {e}")
+                return f"An error occurred on line {e.__traceback__.tb_lineno}: {e}"
 
 # take a message as input, returns a prompt message and a return code
-# return code 0: command message without context
+# return code 0: command message: no context
 # return code 1: normal contextual message
 # return code 2: command not found
 def prompt_manager(message):
