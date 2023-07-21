@@ -140,18 +140,10 @@ class OpenAI(object):
                     return err_msg
 
             except openai.error.RateLimitError:
-                err_msg = "Sorry, OpenAI API rate limit exceeded. Please end the conversation by typing `/end` or retry."
+                err_msg = "Sorry, You have exceeded the content length set by OpenAI. History has been cleared and please retry your request."
+                self.user_conversations[user_id] = []
                 logging.error(err_msg)
                 return err_msg
-
-            except openai.error.OpenAIError as e:
-                if "Please reduce the length" in str(e):
-                    conversation_history = self.trim_conversation_history(
-                        conversation_history, self.max_content_length
-                    )
-                else:
-                    logging.error(f"An error occurred on line {e.__traceback__.tb_lineno}: {e}")
-                    return f"An error occurred."
 
             except Exception as e:
                 logging.error(f"An error occurred on line {e.__traceback__.tb_lineno}: {e}")
