@@ -31,7 +31,7 @@ Except normal texts, the bot also accepts the following commands
 
 
 class OpenAI(object):
-    def __init__(self, api_version, api_key, max_content_length=4097-300):
+    def __init__(self, api_version, api_key, max_content_length=4096*4+1-300):
         # setup API version and API keys
         self.api_version = api_version
         self.api_key = api_key
