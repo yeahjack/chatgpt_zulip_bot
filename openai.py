@@ -13,9 +13,11 @@ class ChatCompletion(object):
             "model": model,
             "messages": messages,
             "temperature": temperature,
-            #"max_tokens": max_tokens
+            "max_tokens": max_tokens
         }
-        return requests.post(url, headers=headers, data=json.dumps(data))
+        res = requests.post(url, headers=headers, data=json.dumps(data))
+        obj = json.loads(res.text)
+        return obj
 
 if __name__ == '__main__':
     from configparser import ConfigParser

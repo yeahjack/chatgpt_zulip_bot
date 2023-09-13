@@ -118,7 +118,7 @@ class OpenAI(object):
                     temperature=0.5,
                 )
 
-                if response.choices:
+                if response["choices"]:
                     role = response["choices"][0]["message"]["role"]
                     reply = (
                         response["choices"][0]["message"]["content"].strip().replace(
@@ -130,9 +130,9 @@ class OpenAI(object):
                     return (
                         reply
                         + "\n------\nTokens used: "
-                        + str(response.usage.prompt_tokens) + " (prompt) + "
-                        + str(response.usage.completion_tokens) + " (answer)"
-                        + " = " + str(response.usage.total_tokens) + "/" + str(self.max_content_length)
+                        + str(response["usage"]["prompt_tokens"]) + " (prompt) + "
+                        + str(response["usage"]["completion_tokens"]) + " (answer)"
+                        + " = " + str(response["usage"]["total_tokens"]) + "/" + str(self.max_content_length)
                     )
                 else:
                     err_msg = "Sorry, I couldn't generate a response."
