@@ -119,9 +119,9 @@ class OpenAI(object):
                 )
 
                 if response.choices:
-                    role = response["choices"][0]["message"]["role"]
+                    role = response.choices[0].message.role
                     reply = (
-                        response["choices"][0]["message"]["content"].strip().replace(
+                        response.choices[0].message.content.strip().replace(
                             "", "")
                     )
                     conversation_history.append(
