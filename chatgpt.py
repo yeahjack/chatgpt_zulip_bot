@@ -111,7 +111,7 @@ class OpenAI(object):
                     role, content = message.split(": ", 1)
                     messages.append({"role": role.lower(), "content": content})
             try:
-                response = openai.ChatCompletion.create(
+                response = openai.chat.completions.create(
                     model=self.api_version,
                     messages=messages,
                     max_tokens=1200,
@@ -139,7 +139,7 @@ class OpenAI(object):
                     logging.error(err_msg)
                     return err_msg
 
-            except openai.error.RateLimitError:
+            except openai.RateLimitError:
                 err_msg = "Sorry, You have exceeded the content length set by OpenAI. History has been cleared and please retry your request."
                 self.user_conversations[user_id] = []
                 logging.error(err_msg)
