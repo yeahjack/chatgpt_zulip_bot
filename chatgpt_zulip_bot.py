@@ -9,10 +9,11 @@ import logging
 
 
 class ChatGPTZulipBot(zulip.Client):
-    def __init__(self, config_file, user_id, bot_id, ai):
+    def __init__(self, config_file, user_id, bot_id, bot_name, ai):
         super().__init__(config_file=config_file)
         self.user_id = user_id
         self.bot_id = bot_id
+        self.bot_name = bot_name
         # the OpenAI instance
         self.ai = ai
 
@@ -30,10 +31,10 @@ class ChatGPTZulipBot(zulip.Client):
         message_content = msg["content"]
         message_type = msg["type"]
         if msg["sender_id"] != self.bot_id:
-            if message_content.startswith("@**ChatGPT**"):
+            if message_content.startswith(f"@**{self.bot_name}**"):
                 stream_id = msg.get("stream_id", None)
                 topic = msg.get("subject", None)
-                prompt = re.sub("@\*\*ChatGPT\*\*", "",
+                prompt = re.sub(f"@\*\*{self.bot_name}\*\*", "",
                                 message_content).strip()
                 response = self.ai.get_chatgpt_response(
                     msg["sender_email"], prompt)
@@ -69,13 +70,15 @@ def serve(configfile):
 
     OPENAI_API_KEY = config["settings"]["OPENAI_API_KEY"]
     OPENAI_API_VERSION = config["settings"]["API_VERSION"]
+    OPENAI_MAXIMUM_CONTENT_LENGTH = config["settings"]["MAXIMUM_CONTENT_LENGTH"]
 
     ZULIP_CONFIG = config["settings"]["ZULIP_CONFIG"]
     USER_ID = int(config["settings"]["USER_ID"])
     BOT_ID = int(config["settings"]["BOT_ID"])
+    BOT_NAME = config["settings"]["BOT_NAME"]
 
-    ai = OpenAI(OPENAI_API_VERSION, OPENAI_API_KEY)
-    bot = ChatGPTZulipBot(ZULIP_CONFIG, USER_ID, BOT_ID, ai)
+    ai = OpenAI(OPENAI_API_VERSION, OPENAI_API_KEY, OPENAI_MAXIMUM_CONTENT_LENGTH)
+    bot = ChatGPTZulipBot(ZULIP_CONFIG, USER_ID, BOT_ID, BOT_NAME, ai)
     bot.send_notification("NOTICE: The ChatGPT bot is now online.")
     print("Successfully started the ChatGPT bot.")
 
