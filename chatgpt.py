@@ -114,7 +114,7 @@ class OpenAI(object):
                 response = openai.chat.completions.create(
                     model=self.api_version,
                     messages=messages,
-                    max_tokens=1200,
+                    max_tokens=self.max_content_length,
                     temperature=0.5,
                 )
 

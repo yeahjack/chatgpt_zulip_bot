@@ -70,7 +70,7 @@ def serve(configfile):
 
     OPENAI_API_KEY = config["settings"]["OPENAI_API_KEY"]
     OPENAI_API_VERSION = config["settings"]["API_VERSION"]
-    OPENAI_MAXIMUM_CONTENT_LENGTH = config["settings"]["MAXIMUM_CONTENT_LENGTH"]
+    OPENAI_MAXIMUM_CONTENT_LENGTH = int(config["settings"]["MAXIMUM_CONTENT_LENGTH"])
 
     ZULIP_CONFIG = config["settings"]["ZULIP_CONFIG"]
     USER_ID = int(config["settings"]["USER_ID"])
