@@ -135,7 +135,8 @@ class ChatGPTZulipBot(zulip.Client):
                 self.refresh_subscribers()
                 response = f"Refreshed subscriber list. Now tracking {len(self.allowed_users)} users."
             else:
-                response = self.chatbot.get_response(sender_email, prompt)
+                # Stream: RAG mode, no chaining
+                response = self.chatbot.get_stream_response(sender_email, prompt)
             
             self.send_message({
                 "type": "stream",
@@ -144,7 +145,7 @@ class ChatGPTZulipBot(zulip.Client):
                 "content": response,
             })
         
-        # Handle private messages
+        # Handle private messages (DM)
         elif message_type == "private":
             # Check if user is allowed (member of the allowed stream)
             if not self.is_user_allowed(sender_id):
@@ -161,7 +162,8 @@ class ChatGPTZulipBot(zulip.Client):
                 self.refresh_subscribers()
                 response = f"Refreshed subscriber list. Now tracking {len(self.allowed_users)} users."
             else:
-                response = self.chatbot.get_response(sender_email, message_content)
+                # DM: Weekly mode with chaining, user must specify week
+                response = self.chatbot.get_dm_response(sender_email, message_content)
             
             self.send_message({
                 "type": "private",
@@ -186,19 +188,12 @@ def serve(config_file: str = "config.ini"):
     model = settings.get("MODEL") or settings.get("API_VERSION", "gpt-4o")
     course_dir = settings.get("COURSE_DIR")
     
-    # File patterns to filter course materials (comma-separated)
+    # File patterns to filter course materials (comma-separated, for DM weekly mode)
     file_patterns_str = settings.get("FILE_PATTERNS", "")
     file_patterns = [p.strip() for p in file_patterns_str.split(",") if p.strip()]
     
-    # Vector store ID for RAG (optional - if not set, uses local context)
+    # Vector store ID for RAG (required for stream mode)
     vector_store_id = settings.get("VECTOR_STORE_ID")
-    
-    # Context mode: rag, full, or filtered
-    context_mode = settings.get("CONTEXT_MODE")
-    
-    # Enable AI command tools (week focus, reset, help)
-    enable_commands_str = settings.get("ENABLE_COMMANDS", "true").lower()
-    enable_commands = enable_commands_str in ("true", "1", "yes", "on")
     
     # Optional: override auto-detected max tokens
     max_output_tokens = None
@@ -225,8 +220,6 @@ def serve(config_file: str = "config.ini"):
         file_patterns=file_patterns,
         vector_store_id=vector_store_id,
         max_output_tokens=max_output_tokens,
-        context_mode=context_mode,
-        enable_commands=enable_commands,
     )
     
     # Initialize Zulip bot
@@ -235,23 +228,23 @@ def serve(config_file: str = "config.ini"):
         allowed_streams=allowed_streams
     )
     
+    # Print startup info
+    print(f"ChatGPT bot starting (model: {model})")
+    print(f"  Stream mode: RAG (vector store: {vector_store_id or 'NOT SET'})")
+    print(f"  DM mode: Weekly (user selects week, available: {chatbot.available_weeks})")
+    if file_patterns:
+        print(f"  File patterns: {file_patterns}")
+    
     if allowed_streams:
-        print(f"Access restricted to streams: {', '.join(allowed_streams)}")
-        print(f"Authorized users: {len(bot.allowed_users)}")
+        print(f"  Access restricted to: {', '.join(allowed_streams)}")
+        print(f"  Authorized users: {len(bot.allowed_users)}")
     
-    # Print context mode
-    mode = chatbot.context_mode
-    if mode == "rag":
-        print(f"Context mode: RAG (vector store: {vector_store_id})")
-    elif mode == "full":
-        print("Context mode: full (all course materials in context)")
-    else:
-        print(f"Context mode: filtered (patterns: {file_patterns})")
-    
-    print(f"AI commands: {'enabled' if enable_commands else 'disabled'}")
+    if not vector_store_id:
+        print("\n⚠️  WARNING: VECTOR_STORE_ID not set. Stream messages will fail.")
+        print("   Run 'make upload' to create a vector store.\n")
     
     bot.send_notification("NOTICE: The ChatGPT bot is now online.")
-    print(f"Successfully started ChatGPT bot (model: {model})")
+    print("Bot is now online and listening for messages...")
     
     atexit.register(on_exit, bot)
     bot.call_on_each_message(bot.process_message)

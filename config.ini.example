@@ -1,60 +1,50 @@
 [settings]
+# =============================================================================
 # OpenAI Configuration
+# =============================================================================
 OPENAI_API_KEY = YOUR_OPENAI_API_KEY
+
 # Model name (e.g., gpt-5.2, gpt-4o, gpt-4-turbo, o1-mini)
-# Context window and max output tokens are auto-detected based on model
 MODEL = gpt-4o
 
+# =============================================================================
 # Zulip Configuration
+# =============================================================================
 ZULIP_CONFIG = zuliprc
 USER_ID = ZULIP_USER_ID_INT
 BOT_ID = BOT_DEPLOYED_ID
 BOT_NAME = YOUR_BOT_NAME
 
-# Course materials directory (relative or absolute path)
+# Access control: restrict to specific streams (comma-separated)
+# Only users subscribed to these streams can use the bot
+# Leave empty to allow access from anywhere
+ALLOWED_STREAMS = DSAA3071-2026-Spring, Teaching-DSAA3071-2026-Spring
+
+# =============================================================================
+# Course Materials
+# =============================================================================
+# Directory containing course materials (.typ files organized by week)
 COURSE_DIR = DSAA3071TheoryOfComputation
 
-# File patterns to include from course materials (comma-separated)
-# Supports glob patterns and substring matching:
-#   - Glob: "*learning-sheet*", "week*/*.typ", "*.typ"
-#   - Substring: "learning-sheet" (matches if contained in filename)
-# Leave empty to load all files
-# Examples:
-#   FILE_PATTERNS = learning-sheet, validation
-#   FILE_PATTERNS = *learning-sheet*, *validation*
+# =============================================================================
+# Stream Mode: RAG (Retrieval-Augmented Generation)
+# =============================================================================
+# Vector store ID for stream messages - upload course files first: make upload
+# Stream messages use RAG to search relevant content per query
+VECTOR_STORE_ID = vs_xxxxxxxxxxxx
+
+# =============================================================================
+# DM Mode: Weekly with Chaining
+# =============================================================================
+# In DM, users must specify which week to study (e.g., "week 3")
+# Then they can ask follow-up questions about that week's content
+
+# File patterns to filter which files to load per week (comma-separated)
+# Supports glob patterns: "*learning-sheet*", "*validation*"
 FILE_PATTERNS = *learning-sheet*, *validation*
 
 # =============================================================================
-# Context Mode Configuration
+# Optional Settings
 # =============================================================================
-# CONTEXT_MODE controls how course materials are provided to the AI:
-#   - rag: Use OpenAI Vector Store for semantic search (requires VECTOR_STORE_ID)
-#   - full: Load ALL course materials into context (ignores FILE_PATTERNS)
-#   - filtered: Load only files matching FILE_PATTERNS into context
-# Default: rag if VECTOR_STORE_ID is set, otherwise filtered
-CONTEXT_MODE = rag
-
-# RAG (Retrieval-Augmented Generation) using OpenAI File Search
-# Vector store ID - upload course files first using: make upload
-# VECTOR_STORE_ID = vs_xxxxxxxxxxxx
-
-# =============================================================================
-# AI Command Tools
-# =============================================================================
-# Enable AI-powered command handling (week focus, reset, help)
-# When enabled, the AI can understand natural language commands like:
-#   - "Focus on week 3" / "Let's study week 5"
-#   - "Show all weeks" / "Cover everything"
-#   - "Start over" / "New conversation"
-#   - "Help" / "What can you do?"
-# Set to false to disable these tools and reduce token usage slightly
-ENABLE_COMMANDS = true
-
-# Access Control: Restrict bot to specific streams and their members
-# Comma-separated list of stream names
-# Only users subscribed to these streams can use the bot (in stream or via DM)
-# Leave empty or remove to allow access from anywhere
-ALLOWED_STREAMS = DSAA3071-2026-Spring, Teaching-DSAA3071-2026-Spring
-
-# Optional: Override auto-detected max output tokens
+# Override auto-detected max output tokens
 # MAXIMUM_CONTENT_LENGTH = 16384

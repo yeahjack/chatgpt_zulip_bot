@@ -1,69 +1,201 @@
 # ChatGPT Zulip Bot
 
-![GitHub License](https://img.shields.io/github/license/yeahjack/chatgpt_zulip_bot) [![Python Tests](https://github.com/yeahjack/chatgpt_zulip_bot/actions/workflows/ci.yml/badge.svg)](https://github.com/yeahjack/chatgpt_zulip_bot/actions/workflows/ci.yml) ![visitors](https://visitor-badge.glitch.me/badge?page_id=yeahjack.chatgpt_zulip_bot&left_color=green&right_color=blue)
+![GitHub License](https://img.shields.io/github/license/yeahjack/chatgpt_zulip_bot) [![Python Tests](https://github.com/yeahjack/chatgpt_zulip_bot/actions/workflows/ci.yml/badge.svg)](https://github.com/yeahjack/chatgpt_zulip_bot/actions/workflows/ci.yml)
 
-The ChatGPT Zulip Bot is a bot that responds to users by using the ChatGPT language model. It can be used in any Zulip chat streams or private messages.
+An AI-powered Zulip bot for course assistance with different modes for streams and DMs.
 
-# Installation
+## Features
 
-1. Clone the repository:
+- **Stream Mode**: RAG-powered Q&A (vector store search, stateless)
+- **DM Mode**: Weekly study sessions (user selects week, with follow-up support)
+- **Access Control**: Restrict bot to specific Zulip streams and their members
+- **Question Quoting**: Responses include quoted original question for context
+
+---
+
+## How It Works
+
+| Message Type | Mode | Behavior |
+|--------------|------|----------|
+| **Stream** | RAG | Searches vector store per query, no conversation memory |
+| **DM** | Weekly | User specifies week, then can ask follow-up questions |
+
+### Stream Messages
+
+When mentioned in a stream (`@ChatGPT what is a DFA?`):
+- Uses RAG to search relevant course materials
+- Each question is independent (stateless)
+- Best for quick Q&A visible to everyone
+
+### Direct Messages
+
+When messaged directly:
+1. User must first specify a week with `/week N` command
+2. Bot loads that week's course materials
+3. User can ask follow-up questions (conversation is chained)
+4. To switch weeks, use `/week N` again
+
+---
+
+## File Structure
+
+```
+chatgpt_zulip_bot/
+├── chatgpt.py              # ChatBot class with stream/DM modes
+├── chatgpt_zulip_bot.py    # Zulip bot server
+├── upload_to_openai.py     # Upload course materials to vector store
+├── config.ini              # Your configuration (git-ignored)
+├── config.ini.example      # Configuration template
+├── zuliprc                 # Zulip credentials (git-ignored)
+└── DSAA3071.../            # Course materials (organized by week)
+```
+
+---
+
+## Installation
+
+### 1. Clone and Install
 
 ```bash
 git clone https://github.com/yeahjack/chatgpt_zulip_bot.git
-```
+cd chatgpt_zulip_bot
 
-2. Install the required dependencies (You might need to create a virtual env if you like):
+# Using uv (recommended)
+uv sync
 
-```bash
+# Or pip
 pip install -r requirements.txt
 ```
 
-3. Set up your Zulip bot:
+### 2. Set Up Zulip Bot
 
-- Go to your Zulip organization settings, and navigate to the "Your bots" section.
-- Click the "Add a new bot" button and follow the prompts to create a new bot.
-- Download the configuartion file and move it to this folder.
-- Rename `config.ini.example` to `config.ini` and fill in the values, note that you do not have to add commas (`" "`) around the values.
-Here are the explanations of parameters in `config.ini`.
+1. Go to Zulip **Settings → Your bots**
+2. Create a generic bot
+3. Download `zuliprc` and place in this directory
 
-| Parameters | Details |
-| --- | --- |
-| OPENAI_API_KEY | Your OpenAI API Key. Could be set via [this](https://platform.openai.com/account/api-keys).
-| ZULIP_CONFIG | The filename of your zulip bot configuration file.
-| USER_ID | The ID of the admin. Used for notifications.
-| BOT_ID | The ID of the zulip bot. Used for positioning.
-| API_VERSION | The version of OpenAI models. e.g. `gpt-3.5-turbo` |
-
-4. Start the bot:
+### 3. Configure
 
 ```bash
-python chatgpt_zulip_bot.py
+cp config.ini.example config.ini
+# Edit config.ini with your settings
 ```
 
-## Proxies
+### 4. Upload Course Materials (for RAG)
 
-If you need to set a proxy for the OpenAI API, the normal method would be
-```python
-import os
-os.environ["http_proxy"] = "http://127.0.0.1:7890"
-os.environ["https_proxy"] = "http://127.0.0.1:7890"
+```bash
+make upload
+# Copy the VECTOR_STORE_ID to config.ini
 ```
-Remember to replace both strings to your proxy address and port.
 
-# Usage
+### 5. Run
 
-To use the bot, mention it in any Zulip stream or send it a private message. You can mention the bot by typing `@bot_name` where the name is what you gave to the bot when you created it.
-Except normal texts, the bot also accepts the following commands
+```bash
+make run
+```
 
-## Commands
-* `/help`: print this usage information.
-* `/end`: end the current conversation. Bot will answer questions based on the context of the conversation. If a conversation reaches its 3000 token limit (you will see a message: "ERROR: OpenAI API rate limit exceeded. Please retry."), then you must restart the conversation with `/end`.
+---
 
-# Testing
+## Configuration
 
-If you forked this repo and did some changes, you can run the tests to make sure everything is working fine. Each time you push a commit, the tests will be automatically run by GitHub Actions. Note that you need to set `API_VERSION` and `OPENAI_API_KEY` in GitHub secrets.
+```ini
+[settings]
+# OpenAI
+OPENAI_API_KEY = sk-...
+MODEL = gpt-4o
 
-# Contributing and bug reports
+# Zulip
+ZULIP_CONFIG = zuliprc
+USER_ID = 123
+BOT_ID = 456
+BOT_NAME = ChatGPT
+ALLOWED_STREAMS = DSAA3071-2026-Spring
 
-Feel free to leave an [issue](https://github.com/yeahjack/chatgpt_zulip_bot/issues) if you have any questions or suggestions.
-Pull requests are also welcomed. If you are interested in contributing this project, a good place to start is the `chatgpt_zulip_bot.py` and `chatgpt.py` files. You can customize the bot's behavior by modifying it.
+# Course materials
+COURSE_DIR = DSAA3071TheoryOfComputation
+
+# RAG (for stream mode) - run 'make upload' first
+VECTOR_STORE_ID = vs_xxxxxxxxxxxx
+
+# File patterns (for DM weekly mode)
+FILE_PATTERNS = *learning-sheet*, *validation*
+```
+
+| Setting | Required | Description |
+|---------|----------|-------------|
+| `OPENAI_API_KEY` | Yes | OpenAI API key |
+| `MODEL` | Yes | Model name (gpt-4o, gpt-5.2, etc.) |
+| `ZULIP_CONFIG` | Yes | Path to zuliprc file |
+| `USER_ID` | Yes | Admin's Zulip user ID |
+| `BOT_ID` | Yes | Bot's Zulip user ID |
+| `BOT_NAME` | Yes | Bot's display name |
+| `ALLOWED_STREAMS` | No | Comma-separated stream names |
+| `COURSE_DIR` | Yes | Path to course materials |
+| `VECTOR_STORE_ID` | Yes* | OpenAI vector store ID (*required for streams) |
+| `FILE_PATTERNS` | No | Patterns for DM weekly mode |
+
+---
+
+## Usage Examples
+
+### In Streams
+
+```
+@ChatGPT What is a DFA?
+@ChatGPT Explain the pumping lemma for regular languages
+@ChatGPT How do I convert NFA to DFA?
+```
+
+### In DMs
+
+```
+User: /week 3
+Bot:  Now studying Week 3. Ask any questions about this week's content!
+      Commands: /week N to switch weeks
+
+User: What topics are covered?
+Bot:  > What topics are covered?
+      Week 3 covers... [answer based on week 3 materials]
+
+User: Can you explain more about NFAs?
+Bot:  > Can you explain more about NFAs?
+      [follow-up answer, still using week 3 context]
+
+User: /week 5
+Bot:  Now studying Week 5. Ask any questions about this week's content!
+```
+
+### Commands
+
+| Command | Context | Description |
+|---------|---------|-------------|
+| `/week N` | DM | Switch to week N (keeps conversation history) |
+| `/reset` | DM | Clear conversation history (keeps current week) |
+| `/refresh` | Any | Admin only: reload subscriber list |
+
+---
+
+## Response Format
+
+All responses include the quoted question:
+
+```
+> What is a DFA?
+
+A DFA (Deterministic Finite Automaton) is...
+
+------
+Tokens: 1,234 (input) + 567 (output) = 1,801
+```
+
+---
+
+## Contributing
+
+Key files:
+- `chatgpt.py` - Core AI logic, stream/DM handlers
+- `chatgpt_zulip_bot.py` - Zulip integration
+- `upload_to_openai.py` - Vector store management
+
+## License
+
+MIT License
