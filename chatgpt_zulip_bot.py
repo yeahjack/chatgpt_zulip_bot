@@ -1,92 +1,237 @@
-# chat_gpt_zulip_bot.py
+# chatgpt_zulip_bot.py
+"""
+Zulip bot that integrates with OpenAI for course assistance.
+Restricted to specific streams and their members.
+"""
 
 import zulip
 import re
-from chatgpt import OpenAI
 import atexit
-from configparser import ConfigParser
 import logging
+from configparser import ConfigParser
+
+from chatgpt import ChatBot
 
 
 class ChatGPTZulipBot(zulip.Client):
-    def __init__(self, config_file, user_id, bot_id, bot_name, ai):
+    """Zulip bot that responds to messages using OpenAI."""
+    
+    def __init__(
+        self, 
+        config_file: str, 
+        user_id: int, 
+        bot_id: int, 
+        bot_name: str, 
+        chatbot: ChatBot,
+        allowed_streams: list = None
+    ):
         super().__init__(config_file=config_file)
         self.user_id = user_id
         self.bot_id = bot_id
         self.bot_name = bot_name
-        # the OpenAI instance
-        self.ai = ai
+        self.chatbot = chatbot
+        self.allowed_streams = allowed_streams or []
+        
+        # Cache for allowed users (stream subscribers) and stream IDs
+        self.allowed_users = set()
+        self.allowed_stream_ids = set()
+        
+        # Load allowed users if stream restriction is enabled
+        if self.allowed_streams:
+            self._load_stream_subscribers()
+    
+    def _load_stream_subscribers(self):
+        """Load the list of subscribers from all allowed streams."""
+        if not self.allowed_streams:
+            return
+        
+        self.allowed_users = set()
+        self.allowed_stream_ids = set()
+        
+        for stream_name in self.allowed_streams:
+            # Get stream ID
+            result = self.get_stream_id(stream_name)
+            if result["result"] != "success":
+                logging.error(f"Failed to get stream ID for '{stream_name}': {result}")
+                continue
+            
+            stream_id = result["stream_id"]
+            self.allowed_stream_ids.add(stream_id)
+            logging.info(f"Allowed stream: {stream_name} (ID: {stream_id})")
+            
+            # Get subscribers
+            result = self.get_subscribers(stream=stream_name)
+            if result["result"] == "success":
+                subscribers = set(result["subscribers"])
+                self.allowed_users.update(subscribers)
+                logging.info(f"Loaded {len(subscribers)} subscribers from '{stream_name}'")
+            else:
+                logging.error(f"Failed to get subscribers for '{stream_name}': {result}")
+        
+        logging.info(f"Total allowed users: {len(self.allowed_users)}")
+    
+    def refresh_subscribers(self):
+        """Refresh the list of allowed users from all streams."""
+        self._load_stream_subscribers()
+    
+    def is_user_allowed(self, user_id: int) -> bool:
+        """Check if a user is allowed to use the bot."""
+        # If no stream restriction, allow everyone
+        if not self.allowed_streams:
+            return True
+        
+        # Admin is always allowed
+        if user_id == self.user_id:
+            return True
+        
+        # Check if user is in any allowed stream
+        return user_id in self.allowed_users
+    
+    def is_stream_allowed(self, stream_name: str = None, stream_id: int = None) -> bool:
+        """Check if a stream is allowed."""
+        if not self.allowed_streams:
+            return True
+        
+        if stream_name:
+            return stream_name in self.allowed_streams
+        if stream_id:
+            return stream_id in self.allowed_stream_ids
+        return False
 
-    def send_notification(self, message):
-        self.send_message(
-            {
-                "type": "private",
-                "to": [self.user_id],
-                "content": message,
-            }
-        )
+    def send_notification(self, message: str):
+        """Send a private notification to the admin user."""
+        self.send_message({
+            "type": "private",
+            "to": [self.user_id],
+            "content": message,
+        })
 
-    def process_message(self, msg):
+    def process_message(self, msg: dict):
+        """Process incoming messages and respond."""
+        sender_id = msg["sender_id"]
         sender_email = msg["sender_email"]
         message_content = msg["content"]
         message_type = msg["type"]
-        if msg["sender_id"] != self.bot_id:
-            if message_content.startswith(f"@**{self.bot_name}**"):
-                stream_id = msg.get("stream_id", None)
-                topic = msg.get("subject", None)
-                prompt = re.sub(f"@\*\*{self.bot_name}\*\*", "",
-                                message_content).strip()
-                response = self.ai.get_chatgpt_response(
-                    msg["sender_email"], prompt)
-                self.send_message(
-                    {
-                        "type": "stream",
-                        "to": stream_id,
-                        "subject": topic,
-                        "content": response,
-                    }
-                )
+        
+        # Ignore messages from self
+        if sender_id == self.bot_id:
+            return
+        
+        # Handle mentions in streams
+        if message_content.startswith(f"@**{self.bot_name}**"):
+            stream_id = msg.get("stream_id")
+            stream_name = msg.get("display_recipient")  # Stream name for stream messages
+            topic = msg.get("subject")
+            
+            # Check if stream is allowed
+            if not self.is_stream_allowed(stream_name=stream_name, stream_id=stream_id):
+                logging.info(f"Ignored message from unauthorized stream: {stream_name}")
+                return
+            
+            prompt = re.sub(rf"@\*\*{self.bot_name}\*\*", "", message_content).strip()
+            
+            # Handle admin commands
+            if sender_id == self.user_id and prompt.lower() == "/refresh":
+                self.refresh_subscribers()
+                response = f"Refreshed subscriber list. Now tracking {len(self.allowed_users)} users."
+            else:
+                response = self.chatbot.get_response(sender_email, prompt)
+            
+            self.send_message({
+                "type": "stream",
+                "to": stream_id,
+                "subject": topic,
+                "content": response,
+            })
+        
+        # Handle private messages
+        elif message_type == "private":
+            # Check if user is allowed (member of the allowed stream)
+            if not self.is_user_allowed(sender_id):
+                logging.info(f"Ignored private message from unauthorized user: {sender_email}")
+                self.send_message({
+                    "type": "private",
+                    "to": sender_email,
+                    "content": f"Sorry, this bot is only available to members of: **{', '.join(self.allowed_streams)}**",
+                })
+                return
+            
+            # Handle admin commands
+            if sender_id == self.user_id and message_content.lower().strip() == "/refresh":
+                self.refresh_subscribers()
+                response = f"Refreshed subscriber list. Now tracking {len(self.allowed_users)} users."
+            else:
+                response = self.chatbot.get_response(sender_email, message_content)
+            
+            self.send_message({
+                "type": "private",
+                "to": sender_email,
+                "content": response,
+            })
 
-            if message_type == "private":
-                prompt = message_content
-                response = self.ai.get_chatgpt_response(
-                    msg["sender_email"], prompt)
-                self.send_message(
-                    {
-                        "type": "private",
-                        "to": sender_email,
-                        "content": response,
-                    }
-                )
 
-
-def on_exit(bot):
+def on_exit(bot: ChatGPTZulipBot):
+    """Send offline notification when bot exits."""
     bot.send_notification("NOTICE: The ChatGPT bot is now offline.")
 
 
-def serve(configfile):
+def serve(config_file: str = "config.ini"):
+    """Start the Zulip bot server."""
     config = ConfigParser()
-    config.read(configfile)
-
-    OPENAI_API_KEY = config["settings"]["OPENAI_API_KEY"]
-    OPENAI_API_VERSION = config["settings"]["API_VERSION"]
-    OPENAI_MAXIMUM_CONTENT_LENGTH = int(config["settings"]["MAXIMUM_CONTENT_LENGTH"])
-
-    ZULIP_CONFIG = config["settings"]["ZULIP_CONFIG"]
-    USER_ID = int(config["settings"]["USER_ID"])
-    BOT_ID = int(config["settings"]["BOT_ID"])
-    BOT_NAME = config["settings"]["BOT_NAME"]
-
-    ai = OpenAI(OPENAI_API_VERSION, OPENAI_API_KEY, OPENAI_MAXIMUM_CONTENT_LENGTH)
-    bot = ChatGPTZulipBot(ZULIP_CONFIG, USER_ID, BOT_ID, BOT_NAME, ai)
+    config.read(config_file)
+    settings = config["settings"]
+    
+    # OpenAI settings
+    api_key = settings["OPENAI_API_KEY"]
+    model = settings.get("MODEL") or settings.get("API_VERSION", "gpt-4o")
+    course_dir = settings.get("COURSE_DIR")
+    
+    # Optional: override auto-detected max tokens
+    max_output_tokens = None
+    if "MAXIMUM_CONTENT_LENGTH" in settings:
+        max_output_tokens = int(settings["MAXIMUM_CONTENT_LENGTH"])
+    
+    # Zulip settings
+    zulip_config = settings["ZULIP_CONFIG"]
+    user_id = int(settings["USER_ID"])
+    bot_id = int(settings["BOT_ID"])
+    bot_name = settings["BOT_NAME"]
+    
+    # Access control: restrict to specific streams (comma-separated)
+    allowed_streams_str = settings.get("ALLOWED_STREAMS") or settings.get("ALLOWED_STREAM")
+    allowed_streams = []
+    if allowed_streams_str:
+        allowed_streams = [s.strip() for s in allowed_streams_str.split(",") if s.strip()]
+    
+    # Initialize chatbot
+    chatbot = ChatBot(
+        model=model,
+        api_key=api_key,
+        course_dir=course_dir,
+        max_output_tokens=max_output_tokens,
+    )
+    
+    # Initialize Zulip bot
+    bot = ChatGPTZulipBot(
+        zulip_config, user_id, bot_id, bot_name, chatbot,
+        allowed_streams=allowed_streams
+    )
+    
+    if allowed_streams:
+        print(f"Access restricted to streams: {', '.join(allowed_streams)}")
+        print(f"Authorized users: {len(bot.allowed_users)}")
+    
     bot.send_notification("NOTICE: The ChatGPT bot is now online.")
-    print("Successfully started the ChatGPT bot.")
-
+    print(f"Successfully started ChatGPT bot (model: {model})")
+    
     atexit.register(on_exit, bot)
-
     bot.call_on_each_message(bot.process_message)
 
 
 if __name__ == "__main__":
-    logging.basicConfig(filename="bot.log")
+    logging.basicConfig(
+        filename="bot.log",
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s"
+    )
     serve("config.ini")

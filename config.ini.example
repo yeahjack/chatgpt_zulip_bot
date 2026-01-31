@@ -1,6 +1,24 @@
 [settings]
+# OpenAI Configuration
 OPENAI_API_KEY = YOUR_OPENAI_API_KEY
-ZULIP_CONFIG = FILENAME
+# Model name (e.g., gpt-5.2, gpt-4o, gpt-4-turbo, o1-mini)
+# Context window and max output tokens are auto-detected based on model
+MODEL = gpt-4o
+
+# Zulip Configuration
+ZULIP_CONFIG = zuliprc
 USER_ID = ZULIP_USER_ID_INT
 BOT_ID = BOT_DEPLOYED_ID
-API_VERSION = OPENAI_API_VERSION
+BOT_NAME = YOUR_BOT_NAME
+
+# Course materials directory (relative or absolute path)
+COURSE_DIR = DSAA3071TheoryOfComputation
+
+# Access Control: Restrict bot to specific streams and their members
+# Comma-separated list of stream names
+# Only users subscribed to these streams can use the bot (in stream or via DM)
+# Leave empty or remove to allow access from anywhere
+ALLOWED_STREAMS = DSAA3071-2026-Spring, Teaching-DSAA3071-2026-Spring
+
+# Optional: Override auto-detected max output tokens
+# MAXIMUM_CONTENT_LENGTH = 16384

@@ -2,3 +2,6 @@ __pycache__
 config.ini
 zuliprc
 bot.log
+
+# Course materials (cloned separately, not a submodule)
+DSAA3071TheoryOfComputation/
