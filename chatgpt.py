@@ -12,6 +12,7 @@ import tiktoken
 import logging
 import os
 import glob
+import fnmatch
 
 # =============================================================================
 # Model Configuration
@@ -104,18 +105,17 @@ DEFAULT_COURSE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "D
 HELP_MESSAGE = """# DSAA3071 Theory of Computation - Course Assistant
 
 This bot is a specialized assistant for the DSAA3071 Theory of Computation course at HKUST(GZ).
-It has access to all course materials including lecture notes, learning sheets, and validation exercises.
+It uses RAG (Retrieval-Augmented Generation) to search course materials and provide accurate answers.
 
 ## Commands
-* `/help`: Print this usage information.
-* `/end`: End the current conversation and clear context.
-* `/week N`: Focus on a specific week's content (e.g., `/week 3`).
+* `/help` - Show this help message
+* `/end` or `/new` - End conversation and start fresh
 
 ## Topics Covered
 Finite Automata (DFA/NFA), Regular Languages, Context-Free Grammars, 
 Pushdown Automata, Turing Machines, Decidability, and Complexity Theory.
 
-Feel free to ask questions about any topic from the course!
+Just ask any question about the course!
 """
 
 
@@ -173,8 +173,37 @@ def extract_text_content(typst_content: str) -> str:
     return '\n'.join(lines)
 
 
-def get_course_context(materials: dict, week: str = None, max_chars: int = 500_000) -> str:
-    """Generate a context string from course materials (learning-sheet.typ files only)."""
+def match_file_pattern(filename: str, patterns: list) -> bool:
+    """Check if filename matches any of the patterns.
+    
+    Supports:
+    - Glob patterns: "*.typ", "week*/learning-sheet.typ", "**/validation.typ"
+    - Simple substring: "learning-sheet" (matches if contained in filename)
+    """
+    for pattern in patterns:
+        # If pattern contains glob characters, use fnmatch
+        if any(c in pattern for c in ['*', '?', '[']):
+            if fnmatch.fnmatch(filename, pattern):
+                return True
+        else:
+            # Simple substring match
+            if pattern in filename:
+                return True
+    return False
+
+
+def get_course_context(materials: dict, week: str = None, file_patterns: list = None, max_chars: int = 500_000) -> str:
+    """Generate a context string from course materials.
+    
+    Args:
+        materials: Dictionary of course materials by category
+        week: Optional week to focus on (e.g., "week3")
+        file_patterns: List of patterns to match filenames. Supports:
+                      - Glob: "week*/learning-sheet.typ", "*.typ"
+                      - Substring: "learning-sheet" (matches if in filename)
+                      If None or empty, loads all files
+        max_chars: Maximum characters to return
+    """
     context_parts = []
     
     # Determine which weeks to include
@@ -186,11 +215,14 @@ def get_course_context(materials: dict, week: str = None, max_chars: int = 500_0
     for wk in weeks_to_load:
         week_content = []
         for filename, content in materials[wk].items():
-            # Only load learning-sheet files
-            if 'learning-sheet' in filename:
-                clean_content = extract_text_content(content)
-                if clean_content.strip():
-                    week_content.append(f"--- {filename} ---\n{clean_content}")
+            # Filter by file patterns if specified
+            if file_patterns:
+                if not match_file_pattern(filename, file_patterns):
+                    continue
+            
+            clean_content = extract_text_content(content)
+            if clean_content.strip():
+                week_content.append(f"--- {filename} ---\n{clean_content}")
         
         if week_content:
             context_parts.append(f"\n=== {wk.upper()} ===")
@@ -212,7 +244,9 @@ class ChatBot:
     Benefits: better performance, lower costs, cleaner API, stateful conversations.
     """
     
-    def __init__(self, model: str, api_key: str, course_dir: str = None, max_output_tokens: int = None):
+    def __init__(self, model: str, api_key: str, course_dir: str = None, 
+                 file_patterns: list = None, vector_store_id: str = None,
+                 max_output_tokens: int = None):
         """
         Initialize the chatbot.
         
@@ -220,6 +254,8 @@ class ChatBot:
             model: OpenAI model name (e.g., "gpt-4o", "gpt-5.2")
             api_key: OpenAI API key
             course_dir: Path to course materials directory (optional)
+            file_patterns: List of patterns to filter course files (e.g., ["learning-sheet"])
+            vector_store_id: OpenAI Vector Store ID for RAG (if None, uses local context)
             max_output_tokens: Override for max output tokens (auto-detected if None)
         """
         self.model = model
@@ -232,9 +268,15 @@ class ChatBot:
         
         # User state: store response IDs for conversation continuity
         self.user_response_ids = {}  # user_id -> last response ID
-        self.week_focus = {}         # user_id -> week string or None
+        self.last_topics = {}        # user_id -> last topic summary (for AI detection)
         
-        # Load course materials
+        # RAG: Vector store ID for file search
+        self.vector_store_id = vector_store_id
+        if vector_store_id:
+            logging.info(f"RAG enabled with vector store: {vector_store_id}")
+        
+        # File patterns for filtering course materials (used for local loading if no RAG)
+        self.file_patterns = file_patterns or []
         self.course_materials = load_course_materials(course_dir)
         
         logging.info(f"ChatBot initialized: model={model}, max_output={self.max_output_tokens:,}")
@@ -249,41 +291,95 @@ class ChatBot:
         cmd = command.lower().strip()
         
         # End conversation
-        if cmd in ["停止会话", "end the conversation", "/end"]:
-            self.user_response_ids.pop(user_id, None)
-            self.week_focus.pop(user_id, None)
-            return "The conversation has been ended and the context has been cleared."
+        if cmd in ["停止会话", "end the conversation", "/end", "/new"]:
+            self._clear_session(user_id)
+            return "Conversation ended. Starting fresh!"
         
         # Help
         if cmd == "/help":
             return HELP_MESSAGE
         
-        # Week focus
-        if cmd.startswith("/week"):
-            parts = cmd.split()
-            if len(parts) >= 2:
-                week_key = f"week{parts[1]}"
-                if week_key in self.course_materials:
-                    self.week_focus[user_id] = week_key
-                    return f"Now focusing on **{week_key}** materials. Ask me anything about this week's content!"
-                else:
-                    available = sorted([k for k in self.course_materials.keys() if k.startswith('week')])
-                    return f"Week {parts[1]} not found. Available: {', '.join(available)}"
-            else:
-                self.week_focus.pop(user_id, None)
-                return "Week focus cleared. Now using all course materials."
-        
         return None
     
-    def _get_instructions(self, user_id: str) -> str:
-        """Build system instructions with course context.
+    def _clear_session(self, user_id: str):
+        """Clear all session state for a user."""
+        self.user_response_ids.pop(user_id, None)
+        self.last_topics.pop(user_id, None)
+    
+    def _detect_topic_change(self, user_id: str, message: str) -> bool:
+        """Use AI to detect if user is starting a new topic. Returns True if session was cleared."""
+        # Only check if there's an existing conversation
+        if user_id not in self.user_response_ids:
+            return False
+        
+        # Get last topic summary (stored after each response)
+        last_topic = self.last_topics.get(user_id)
+        if not last_topic:
+            return False
+        
+        try:
+            # Quick LLM call to detect topic change
+            result = self.client.chat.completions.create(
+                model="gpt-4o-mini",  # Use cheap, fast model for classification
+                messages=[{
+                    "role": "user",
+                    "content": f"""You are a topic change detector for a Theory of Computation course assistant.
+
+Previous conversation topic: {last_topic}
+
+New message: {message}
+
+Is the new message:
+A) Continuing or following up on the same topic
+B) Starting a completely new/different topic
+
+Reply with ONLY "A" or "B"."""
+                }],
+                max_tokens=1,
+                temperature=0,
+            )
+            
+            answer = result.choices[0].message.content.strip().upper()
+            
+            if "B" in answer:
+                self._clear_session(user_id)
+                logging.info(f"AI detected topic change for {user_id}: '{last_topic[:50]}...' → new topic")
+                return True
+                
+        except Exception as e:
+            logging.warning(f"Topic detection failed, continuing session: {e}")
+        
+        return False
+    
+    def _update_topic_summary(self, user_id: str, message: str, response: str):
+        """Update the topic summary for a user's session."""
+        # Simple: use first 100 chars of the exchange as topic summary
+        self.last_topics[user_id] = f"Q: {message[:100]} A: {response[:100]}"
+    
+    def _get_base_instructions(self) -> str:
+        """Get base system instructions without course materials (for RAG mode)."""
+        return """You are an expert teaching assistant for DSAA3071 Theory of Computation at HKUST(GZ).
+You have access to course materials through the file_search tool. Use it to find relevant content from learning sheets and validation exercises.
+
+IMPORTANT: You are responding in Zulip chat. For math equations:
+- Use $$ ... $$ for LaTeX math (both inline and block)
+- MUST have spaces around the delimiters: ` $$x^2$$ ` not `$$x^2$$`
+- Example: The transition function is ` $$\\delta: Q \\times \\Sigma \\to Q$$ `
+
+Your role is to:
+- Help students understand concepts in automata theory, formal languages, and computability
+- Explain DFA, NFA, regular expressions, context-free grammars, pushdown automata, and Turing machines
+- Guide students through proofs and problem-solving techniques
+- Search course materials to provide accurate, relevant information
+- When answering questions, search for related content first to ensure accuracy"""
+    
+    def _get_instructions_with_context(self) -> str:
+        """Build system instructions with embedded course context (for non-RAG fallback).
         
         Note: We don't manually truncate - OpenAI's truncation="auto" handles
         context overflow by dropping items from the beginning of the conversation.
         """
-        week = self.week_focus.get(user_id)
-        
-        base_instructions = f"""You are an expert teaching assistant for DSAA3071 Theory of Computation at HKUST(GZ).
+        base_instructions = """You are an expert teaching assistant for DSAA3071 Theory of Computation at HKUST(GZ).
 You have access to all course materials including lecture notes, learning sheets, and exercises.
 
 IMPORTANT: You are responding in Zulip chat. For math equations:
@@ -297,22 +393,20 @@ Your role is to:
 - Guide students through proofs and problem-solving techniques
 - Reference specific course materials when relevant
 
-{f"Currently focusing on: {week}" if week else "Covering all course materials."}
-
 === COURSE MATERIALS ===
 """
         
-        # Load generous amount of course context - OpenAI handles overflow via truncation="auto"
-        # Use a reasonable limit to avoid excessive API costs
-        max_chars = 100_000  # ~25k tokens
-        
-        course_context = get_course_context(self.course_materials, week=week, max_chars=max_chars)
+        # Load course context - OpenAI handles overflow via truncation="auto"
+        course_context = get_course_context(
+            self.course_materials, 
+            file_patterns=self.file_patterns
+        )
         
         return base_instructions + course_context
     
     def get_response(self, user_id: str, prompt: str) -> str:
         """
-        Get a response for the user's prompt using the Responses API.
+        Get a response for the user's prompt using the Responses API with RAG.
         
         Args:
             user_id: Unique identifier for the user
@@ -321,27 +415,38 @@ Your role is to:
         Returns:
             Response string
         """
-        # Initialize user state
-        if user_id not in self.week_focus:
-            self.week_focus[user_id] = None
+        # AI-based topic change detection
+        topic_changed = self._detect_topic_change(user_id, prompt)
         
         # Check for commands
         command_response = self._handle_command(user_id, prompt)
         if command_response:
             return command_response
         
-        logging.info(f"API call from user: {user_id}")
+        # Log session state
+        status = "topic-changed" if topic_changed else "continuing"
+        logging.info(f"API call from user: {user_id} [{status}]")
         
         try:
             # Build request parameters
             params = {
                 "model": self.model,
                 "input": prompt,
-                "instructions": self._get_instructions(user_id),
+                "instructions": self._get_base_instructions(),
                 "max_output_tokens": self.max_output_tokens,
                 "store": True,  # Enable stateful conversations
                 "truncation": "auto",  # Let OpenAI handle context overflow
             }
+            
+            # Add RAG file search if vector store is configured
+            if self.vector_store_id:
+                params["tools"] = [{
+                    "type": "file_search",
+                    "vector_store_ids": [self.vector_store_id]
+                }]
+            else:
+                # Fallback: include course materials in instructions
+                params["instructions"] = self._get_instructions_with_context()
             
             # Continue from previous response if available
             previous_id = self.user_response_ids.get(user_id)
@@ -356,6 +461,9 @@ Your role is to:
             
             # Extract text using the convenient output_text helper
             reply = response.output_text
+            
+            # Update topic summary for AI-based topic change detection
+            self._update_topic_summary(user_id, prompt, reply)
             
             # Format response with usage info
             usage = response.usage
@@ -374,7 +482,7 @@ Your role is to:
     def _fallback_chat_completions(self, user_id: str, prompt: str) -> str:
         """Fallback to Chat Completions API if Responses API is unavailable."""
         try:
-            system_content = self._get_instructions(user_id)
+            system_content = self._get_instructions_with_context()
             
             messages = [
                 {"role": "system", "content": system_content},
@@ -404,6 +512,10 @@ Your role is to:
                 return "Sorry, I couldn't generate a response."
             
             reply = response.choices[0].message.content.strip()
+            
+            # Update topic summary for AI-based topic change detection
+            self._update_topic_summary(user_id, prompt, reply)
+            
             usage = response.usage
             
             return (

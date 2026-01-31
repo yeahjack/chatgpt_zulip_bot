@@ -186,6 +186,13 @@ def serve(config_file: str = "config.ini"):
     model = settings.get("MODEL") or settings.get("API_VERSION", "gpt-4o")
     course_dir = settings.get("COURSE_DIR")
     
+    # File patterns to filter course materials (comma-separated)
+    file_patterns_str = settings.get("FILE_PATTERNS", "")
+    file_patterns = [p.strip() for p in file_patterns_str.split(",") if p.strip()]
+    
+    # Vector store ID for RAG (optional - if not set, uses local context)
+    vector_store_id = settings.get("VECTOR_STORE_ID")
+    
     # Optional: override auto-detected max tokens
     max_output_tokens = None
     if "MAXIMUM_CONTENT_LENGTH" in settings:
@@ -208,6 +215,8 @@ def serve(config_file: str = "config.ini"):
         model=model,
         api_key=api_key,
         course_dir=course_dir,
+        file_patterns=file_patterns,
+        vector_store_id=vector_store_id,
         max_output_tokens=max_output_tokens,
     )
     
@@ -220,6 +229,11 @@ def serve(config_file: str = "config.ini"):
     if allowed_streams:
         print(f"Access restricted to streams: {', '.join(allowed_streams)}")
         print(f"Authorized users: {len(bot.allowed_users)}")
+    
+    if vector_store_id:
+        print(f"RAG enabled with vector store: {vector_store_id}")
+    else:
+        print("RAG disabled - using local context embedding")
     
     bot.send_notification("NOTICE: The ChatGPT bot is now online.")
     print(f"Successfully started ChatGPT bot (model: {model})")

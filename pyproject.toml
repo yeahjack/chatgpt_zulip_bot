@@ -1,0 +1,12 @@
+[project]
+name = "chatgpt-zulip-bot"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "openai>=2.16.0",
+    "pytest>=9.0.2",
+    "requests>=2.32.5",
+    "tiktoken>=0.12.0",
+    "zulip>=0.9.1",
+]

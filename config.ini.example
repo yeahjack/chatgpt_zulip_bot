@@ -14,6 +14,21 @@ BOT_NAME = YOUR_BOT_NAME
 # Course materials directory (relative or absolute path)
 COURSE_DIR = DSAA3071TheoryOfComputation
 
+# File patterns to include from course materials (comma-separated)
+# Supports glob patterns and substring matching:
+#   - Glob: "*learning-sheet*", "week*/*.typ", "*.typ"
+#   - Substring: "learning-sheet" (matches if contained in filename)
+# Leave empty to load all files
+# Examples:
+#   FILE_PATTERNS = learning-sheet, validation
+#   FILE_PATTERNS = *learning-sheet*, *validation*
+FILE_PATTERNS = *learning-sheet*, *validation*
+
+# RAG (Retrieval-Augmented Generation) using OpenAI File Search
+# Vector store ID - upload course files first using: make upload
+# If not set, falls back to embedding all matching files in the system prompt
+# VECTOR_STORE_ID = vs_xxxxxxxxxxxx
+
 # Access Control: Restrict bot to specific streams and their members
 # Comma-separated list of stream names
 # Only users subscribed to these streams can use the bot (in stream or via DM)
