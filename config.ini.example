@@ -24,10 +24,31 @@ COURSE_DIR = DSAA3071TheoryOfComputation
 #   FILE_PATTERNS = *learning-sheet*, *validation*
 FILE_PATTERNS = *learning-sheet*, *validation*
 
+# =============================================================================
+# Context Mode Configuration
+# =============================================================================
+# CONTEXT_MODE controls how course materials are provided to the AI:
+#   - rag: Use OpenAI Vector Store for semantic search (requires VECTOR_STORE_ID)
+#   - full: Load ALL course materials into context (ignores FILE_PATTERNS)
+#   - filtered: Load only files matching FILE_PATTERNS into context
+# Default: rag if VECTOR_STORE_ID is set, otherwise filtered
+CONTEXT_MODE = rag
+
 # RAG (Retrieval-Augmented Generation) using OpenAI File Search
 # Vector store ID - upload course files first using: make upload
-# If not set, falls back to embedding all matching files in the system prompt
 # VECTOR_STORE_ID = vs_xxxxxxxxxxxx
+
+# =============================================================================
+# AI Command Tools
+# =============================================================================
+# Enable AI-powered command handling (week focus, reset, help)
+# When enabled, the AI can understand natural language commands like:
+#   - "Focus on week 3" / "Let's study week 5"
+#   - "Show all weeks" / "Cover everything"
+#   - "Start over" / "New conversation"
+#   - "Help" / "What can you do?"
+# Set to false to disable these tools and reduce token usage slightly
+ENABLE_COMMANDS = true
 
 # Access Control: Restrict bot to specific streams and their members
 # Comma-separated list of stream names

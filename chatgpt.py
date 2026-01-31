@@ -13,6 +13,7 @@ import logging
 import os
 import glob
 import fnmatch
+import json
 
 # =============================================================================
 # Model Configuration
@@ -107,9 +108,11 @@ HELP_MESSAGE = """# DSAA3071 Theory of Computation - Course Assistant
 This bot is a specialized assistant for the DSAA3071 Theory of Computation course at HKUST(GZ).
 It uses RAG (Retrieval-Augmented Generation) to search course materials and provide accurate answers.
 
-## Commands
-* `/help` - Show this help message
-* `/end` or `/new` - End conversation and start fresh
+## What You Can Ask
+* Focus on a specific week: "Let's focus on week 3" or "I want to study week 5"
+* Cover all weeks: "Show me all weeks" or "I want to see everything"
+* Start fresh: "Start over" or "New conversation"
+* Get help: "Help" or "What can you do?"
 
 ## Topics Covered
 Finite Automata (DFA/NFA), Regular Languages, Context-Free Grammars, 
@@ -117,6 +120,55 @@ Pushdown Automata, Turing Machines, Decidability, and Complexity Theory.
 
 Just ask any question about the course!
 """
+
+# =============================================================================
+# AI Command Tools (Function Calling)
+# =============================================================================
+
+COMMAND_TOOLS = [
+    {
+        "type": "function",
+        "name": "set_week_focus",
+        "description": "Focus the assistant on a specific week's course materials. Call this when the user wants to concentrate on a particular week.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "week_number": {
+                    "type": "integer",
+                    "description": "The week number to focus on (e.g., 1, 2, 3)"
+                }
+            },
+            "required": ["week_number"]
+        }
+    },
+    {
+        "type": "function",
+        "name": "clear_week_focus",
+        "description": "Remove week focus and cover all course materials. Call this when the user wants to see all weeks or stop focusing on a specific week.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+    {
+        "type": "function",
+        "name": "end_session",
+        "description": "End the current conversation and start fresh. Call this when the user wants to reset, start over, or begin a new conversation.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+    {
+        "type": "function",
+        "name": "show_help",
+        "description": "Show help information about the bot's capabilities. Call this when the user asks for help or wants to know what the bot can do.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    }
+]
 
 
 def load_course_materials(course_dir: str = None) -> dict:
@@ -246,7 +298,8 @@ class ChatBot:
     
     def __init__(self, model: str, api_key: str, course_dir: str = None, 
                  file_patterns: list = None, vector_store_id: str = None,
-                 max_output_tokens: int = None):
+                 max_output_tokens: int = None, context_mode: str = None,
+                 enable_commands: bool = True):
         """
         Initialize the chatbot.
         
@@ -257,6 +310,9 @@ class ChatBot:
             file_patterns: List of patterns to filter course files (e.g., ["learning-sheet"])
             vector_store_id: OpenAI Vector Store ID for RAG (if None, uses local context)
             max_output_tokens: Override for max output tokens (auto-detected if None)
+            context_mode: How to provide context - "rag", "full", or "filtered"
+                         Default: "rag" if vector_store_id set, else "filtered"
+            enable_commands: Enable AI command tools (week focus, reset, help)
         """
         self.model = model
         self.client = OpenAIClient(api_key=api_key)
@@ -269,97 +325,84 @@ class ChatBot:
         # User state: store response IDs for conversation continuity
         self.user_response_ids = {}  # user_id -> last response ID
         self.last_topics = {}        # user_id -> last topic summary (for AI detection)
+        self.week_focus = {}         # user_id -> week to focus on (e.g., "week3")
         
-        # RAG: Vector store ID for file search
-        self.vector_store_id = vector_store_id
-        if vector_store_id:
+        # Context mode: rag, full, or filtered
+        if context_mode:
+            self.context_mode = context_mode.lower()
+        elif vector_store_id:
+            self.context_mode = "rag"
+        else:
+            self.context_mode = "filtered"
+        
+        # RAG: Vector store ID for file search (only used if context_mode == "rag")
+        self.vector_store_id = vector_store_id if self.context_mode == "rag" else None
+        if self.vector_store_id:
             logging.info(f"RAG enabled with vector store: {vector_store_id}")
         
-        # File patterns for filtering course materials (used for local loading if no RAG)
+        # Enable AI command tools
+        self.enable_commands = enable_commands
+        
+        # File patterns for filtering course materials (used for "filtered" mode)
         self.file_patterns = file_patterns or []
         self.course_materials = load_course_materials(course_dir)
         
-        logging.info(f"ChatBot initialized: model={model}, max_output={self.max_output_tokens:,}")
+        logging.info(f"ChatBot initialized: model={model}, context_mode={self.context_mode}, "
+                     f"commands={enable_commands}, max_output={self.max_output_tokens:,}")
         logging.info(f"Loaded course materials: {sorted(self.course_materials.keys())}")
     
     def count_tokens(self, text: str) -> int:
         """Count tokens in text."""
         return len(self.encoding.encode(text))
     
-    def _handle_command(self, user_id: str, command: str) -> str | None:
-        """Handle bot commands. Returns response string or None if not a command."""
-        cmd = command.lower().strip()
+    def _execute_tool(self, user_id: str, tool_name: str, arguments: dict) -> str:
+        """Execute a command tool and return the result message."""
+        if tool_name == "set_week_focus":
+            week_num = arguments.get("week_number")
+            week_key = f"week{week_num}"
+            if week_key in self.course_materials:
+                self.week_focus[user_id] = week_key
+                return f"Now focusing on **Week {week_num}**. Ask questions about this week's content!"
+            else:
+                available = sorted([k for k in self.course_materials.keys() if k.startswith("week")])
+                return f"Week {week_num} not found. Available: {', '.join(available)}"
         
-        # End conversation
-        if cmd in ["停止会话", "end the conversation", "/end", "/new"]:
+        elif tool_name == "clear_week_focus":
+            self.week_focus.pop(user_id, None)
+            return "Now covering **all weeks**. Ask any question!"
+        
+        elif tool_name == "end_session":
             self._clear_session(user_id)
             return "Conversation ended. Starting fresh!"
         
-        # Help
-        if cmd == "/help":
+        elif tool_name == "show_help":
             return HELP_MESSAGE
         
-        return None
+        return f"Unknown command: {tool_name}"
     
     def _clear_session(self, user_id: str):
         """Clear all session state for a user."""
         self.user_response_ids.pop(user_id, None)
-        self.last_topics.pop(user_id, None)
+        self.week_focus.pop(user_id, None)
     
-    def _detect_topic_change(self, user_id: str, message: str) -> bool:
-        """Use AI to detect if user is starting a new topic. Returns True if session was cleared."""
-        # Only check if there's an existing conversation
-        if user_id not in self.user_response_ids:
-            return False
+    def _get_base_instructions(self, user_id: str) -> str:
+        """Get base system instructions (for RAG mode)."""
+        week = self.week_focus.get(user_id) if self.enable_commands else None
+        focus_msg = f"Currently focusing on: **{week}**" if week else "Covering all course materials."
         
-        # Get last topic summary (stored after each response)
-        last_topic = self.last_topics.get(user_id)
-        if not last_topic:
-            return False
+        # Command tools description (only if enabled)
+        commands_desc = """
+
+You also have command tools available. Use them when appropriate:
+- set_week_focus: When user wants to focus on a specific week (e.g., "let's do week 3", "focus on week 5")
+- clear_week_focus: When user wants all weeks (e.g., "show all weeks", "cover everything")
+- end_session: When user wants to start fresh (e.g., "reset", "new conversation", "start over")
+- show_help: When user asks for help or capabilities""" if self.enable_commands else ""
         
-        try:
-            # Quick LLM call to detect topic change
-            result = self.client.chat.completions.create(
-                model="gpt-4o-mini",  # Use cheap, fast model for classification
-                messages=[{
-                    "role": "user",
-                    "content": f"""You are a topic change detector for a Theory of Computation course assistant.
-
-Previous conversation topic: {last_topic}
-
-New message: {message}
-
-Is the new message:
-A) Continuing or following up on the same topic
-B) Starting a completely new/different topic
-
-Reply with ONLY "A" or "B"."""
-                }],
-                max_tokens=1,
-                temperature=0,
-            )
-            
-            answer = result.choices[0].message.content.strip().upper()
-            
-            if "B" in answer:
-                self._clear_session(user_id)
-                logging.info(f"AI detected topic change for {user_id}: '{last_topic[:50]}...' → new topic")
-                return True
-                
-        except Exception as e:
-            logging.warning(f"Topic detection failed, continuing session: {e}")
-        
-        return False
-    
-    def _update_topic_summary(self, user_id: str, message: str, response: str):
-        """Update the topic summary for a user's session."""
-        # Simple: use first 100 chars of the exchange as topic summary
-        self.last_topics[user_id] = f"Q: {message[:100]} A: {response[:100]}"
-    
-    def _get_base_instructions(self) -> str:
-        """Get base system instructions without course materials (for RAG mode)."""
-        return """You are an expert teaching assistant for DSAA3071 Theory of Computation at HKUST(GZ).
+        return f"""You are an expert teaching assistant for DSAA3071 Theory of Computation at HKUST(GZ).
 You have access to course materials through the file_search tool. Use it to find relevant content from learning sheets and validation exercises.
+
+{focus_msg}
 
 IMPORTANT: You are responding in Zulip chat. For math equations:
 - Use $$ ... $$ for LaTeX math (both inline and block)
@@ -371,16 +414,30 @@ Your role is to:
 - Explain DFA, NFA, regular expressions, context-free grammars, pushdown automata, and Turing machines
 - Guide students through proofs and problem-solving techniques
 - Search course materials to provide accurate, relevant information
-- When answering questions, search for related content first to ensure accuracy"""
+- When answering questions, search for related content first to ensure accuracy{commands_desc}"""
     
-    def _get_instructions_with_context(self) -> str:
-        """Build system instructions with embedded course context (for non-RAG fallback).
+    def _get_instructions_with_context(self, user_id: str) -> str:
+        """Build system instructions with embedded course context (for full/filtered modes).
         
         Note: We don't manually truncate - OpenAI's truncation="auto" handles
         context overflow by dropping items from the beginning of the conversation.
         """
-        base_instructions = """You are an expert teaching assistant for DSAA3071 Theory of Computation at HKUST(GZ).
+        week = self.week_focus.get(user_id) if self.enable_commands else None
+        focus_msg = f"Currently focusing on: **{week}**" if week else "Covering all course materials."
+        
+        # Command tools description (only if enabled)
+        commands_desc = """
+You also have command tools available. Use them when appropriate:
+- set_week_focus: When user wants to focus on a specific week (e.g., "let's do week 3", "focus on week 5")
+- clear_week_focus: When user wants all weeks (e.g., "show all weeks", "cover everything")
+- end_session: When user wants to start fresh (e.g., "reset", "new conversation", "start over")
+- show_help: When user asks for help or capabilities
+""" if self.enable_commands else ""
+        
+        base_instructions = f"""You are an expert teaching assistant for DSAA3071 Theory of Computation at HKUST(GZ).
 You have access to all course materials including lecture notes, learning sheets, and exercises.
+
+{focus_msg}
 
 IMPORTANT: You are responding in Zulip chat. For math equations:
 - Use $$ ... $$ for LaTeX math (both inline and block)
@@ -392,14 +449,16 @@ Your role is to:
 - Explain DFA, NFA, regular expressions, context-free grammars, pushdown automata, and Turing machines
 - Guide students through proofs and problem-solving techniques
 - Reference specific course materials when relevant
-
+{commands_desc}
 === COURSE MATERIALS ===
 """
         
-        # Load course context - OpenAI handles overflow via truncation="auto"
+        # Load course context - "full" mode ignores file patterns, "filtered" uses them
+        file_patterns = None if self.context_mode == "full" else self.file_patterns
         course_context = get_course_context(
-            self.course_materials, 
-            file_patterns=self.file_patterns
+            self.course_materials,
+            week=week,
+            file_patterns=file_patterns
         )
         
         return base_instructions + course_context
@@ -418,40 +477,45 @@ Your role is to:
         # AI-based topic change detection
         topic_changed = self._detect_topic_change(user_id, prompt)
         
-        # Check for commands
-        command_response = self._handle_command(user_id, prompt)
-        if command_response:
-            return command_response
-        
         # Log session state
         status = "topic-changed" if topic_changed else "continuing"
         logging.info(f"API call from user: {user_id} [{status}]")
         
         try:
+            # Build tools list
+            tools = []
+            
+            # Add command tools if enabled
+            if self.enable_commands:
+                tools.extend(COMMAND_TOOLS)
+            
+            # Add RAG file search if using RAG mode
+            if self.context_mode == "rag" and self.vector_store_id:
+                tools.append({
+                    "type": "file_search",
+                    "vector_store_ids": [self.vector_store_id]
+                })
+            
             # Build request parameters
             params = {
                 "model": self.model,
                 "input": prompt,
-                "instructions": self._get_base_instructions(),
+                "instructions": self._get_base_instructions(user_id) if self.context_mode == "rag" else self._get_instructions_with_context(user_id),
                 "max_output_tokens": self.max_output_tokens,
                 "store": True,  # Enable stateful conversations
                 "truncation": "auto",  # Let OpenAI handle context overflow
             }
             
-            # Add RAG file search if vector store is configured
-            if self.vector_store_id:
-                params["tools"] = [{
-                    "type": "file_search",
-                    "vector_store_ids": [self.vector_store_id]
-                }]
-            else:
-                # Fallback: include course materials in instructions
-                params["instructions"] = self._get_instructions_with_context()
+            # Only add tools if we have any
+            if tools:
+                params["tools"] = tools
             
-            # Continue from previous response if available
-            previous_id = self.user_response_ids.get(user_id)
-            if previous_id:
-                params["previous_response_id"] = previous_id
+            # Continue from previous response if available (but not with RAG to avoid token accumulation)
+            # RAG search results from previous turns would accumulate in conversation history
+            if self.context_mode != "rag":
+                previous_id = self.user_response_ids.get(user_id)
+                if previous_id:
+                    params["previous_response_id"] = previous_id
             
             # Call the Responses API
             response = self.client.responses.create(**params)
@@ -459,8 +523,30 @@ Your role is to:
             # Store response ID for conversation continuity
             self.user_response_ids[user_id] = response.id
             
-            # Extract text using the convenient output_text helper
-            reply = response.output_text
+            # Process tool calls and collect results
+            tool_results = []
+            reply_parts = []
+            
+            for item in response.output:
+                if item.type == "function_call":
+                    # Execute the command tool
+                    args = json.loads(item.arguments) if item.arguments else {}
+                    result = self._execute_tool(user_id, item.name, args)
+                    tool_results.append(result)
+                    logging.info(f"Executed tool {item.name} for {user_id}: {result[:50]}...")
+                elif item.type == "message":
+                    # Collect text content from message
+                    for content in item.content:
+                        if content.type == "output_text":
+                            reply_parts.append(content.text)
+            
+            # Combine reply: tool results first, then AI response
+            if tool_results:
+                reply = "\n\n".join(tool_results)
+                if reply_parts:
+                    reply += "\n\n" + "\n".join(reply_parts)
+            else:
+                reply = response.output_text or "I couldn't generate a response."
             
             # Update topic summary for AI-based topic change detection
             self._update_topic_summary(user_id, prompt, reply)
@@ -482,7 +568,7 @@ Your role is to:
     def _fallback_chat_completions(self, user_id: str, prompt: str) -> str:
         """Fallback to Chat Completions API if Responses API is unavailable."""
         try:
-            system_content = self._get_instructions_with_context()
+            system_content = self._get_instructions_with_context(user_id)
             
             messages = [
                 {"role": "system", "content": system_content},

@@ -193,6 +193,13 @@ def serve(config_file: str = "config.ini"):
     # Vector store ID for RAG (optional - if not set, uses local context)
     vector_store_id = settings.get("VECTOR_STORE_ID")
     
+    # Context mode: rag, full, or filtered
+    context_mode = settings.get("CONTEXT_MODE")
+    
+    # Enable AI command tools (week focus, reset, help)
+    enable_commands_str = settings.get("ENABLE_COMMANDS", "true").lower()
+    enable_commands = enable_commands_str in ("true", "1", "yes", "on")
+    
     # Optional: override auto-detected max tokens
     max_output_tokens = None
     if "MAXIMUM_CONTENT_LENGTH" in settings:
@@ -218,6 +225,8 @@ def serve(config_file: str = "config.ini"):
         file_patterns=file_patterns,
         vector_store_id=vector_store_id,
         max_output_tokens=max_output_tokens,
+        context_mode=context_mode,
+        enable_commands=enable_commands,
     )
     
     # Initialize Zulip bot
@@ -230,10 +239,16 @@ def serve(config_file: str = "config.ini"):
         print(f"Access restricted to streams: {', '.join(allowed_streams)}")
         print(f"Authorized users: {len(bot.allowed_users)}")
     
-    if vector_store_id:
-        print(f"RAG enabled with vector store: {vector_store_id}")
+    # Print context mode
+    mode = chatbot.context_mode
+    if mode == "rag":
+        print(f"Context mode: RAG (vector store: {vector_store_id})")
+    elif mode == "full":
+        print("Context mode: full (all course materials in context)")
     else:
-        print("RAG disabled - using local context embedding")
+        print(f"Context mode: filtered (patterns: {file_patterns})")
+    
+    print(f"AI commands: {'enabled' if enable_commands else 'disabled'}")
     
     bot.send_notification("NOTICE: The ChatGPT bot is now online.")
     print(f"Successfully started ChatGPT bot (model: {model})")
