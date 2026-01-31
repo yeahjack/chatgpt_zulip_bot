@@ -1,16 +1,18 @@
 """Tests for the ChatGPT Zulip Bot."""
 
 import pytest
+import re
 import os
 from unittest.mock import patch, MagicMock
+
+import tiktoken
 
 from chatgpt import (
     ChatBot,
     get_model_specs,
-    get_encoding,
     load_course_materials,
     extract_text_content,
-    get_course_context,
+    get_week_context,
     MODEL_SPECS,
 )
 
@@ -57,10 +59,12 @@ def test_get_model_specs_unknown():
 
 def test_get_encoding():
     """Test encoding retrieval for different models."""
-    enc = get_encoding("gpt-4o")
+    _, _, encoding_name = get_model_specs("gpt-4o")
+    enc = tiktoken.get_encoding(encoding_name)
     assert enc.name == "o200k_base"
     
-    enc = get_encoding("gpt-4-turbo")
+    _, _, encoding_name = get_model_specs("gpt-4-turbo")
+    enc = tiktoken.get_encoding(encoding_name)
     assert enc.name == "cl100k_base"
 
 
@@ -109,35 +113,53 @@ A *finite automaton* is the simplest possible computer.
     assert "#let" not in result
 
 
-def test_get_course_context():
-    """Test course context generation."""
+def test_get_week_context():
+    """Test week context generation."""
     mock_materials = {
         "week1": {
-            "week1/1.intro.typ": "= Week 1\nIntroduction to DFA"
+            "1.intro.typ": "= Week 1\nIntroduction to DFA"
         },
         "week2": {
-            "week2/2.intro.typ": "= Week 2\nNFA and conversions"
+            "2.intro.typ": "= Week 2\nNFA and conversions"
         }
     }
     
     # Test specific week
-    context = get_course_context(mock_materials, week="week1")
-    assert "week1" in context.lower()
+    context = get_week_context(mock_materials, week_num=1)
+    assert "WEEK 1" in context
+    assert "DFA" in context
     
-    # Test all materials
-    context_all = get_course_context(mock_materials)
-    assert isinstance(context_all, str)
+    # Test non-existent week
+    context_empty = get_week_context(mock_materials, week_num=99)
+    assert context_empty == ""
 
 
-def test_get_course_context_max_chars():
+def test_get_week_context_max_chars():
     """Test context truncation."""
     mock_materials = {
         "week1": {
-            "week1/1.intro.typ": "= Week 1\n" + "A" * 10000
+            "1.intro.typ": "= Week 1\n" + "A" * 10000
         }
     }
-    context = get_course_context(mock_materials, week="week1", max_chars=100)
+    context = get_week_context(mock_materials, week_num=1, max_chars=100)
     assert len(context) <= 100
+
+
+def test_get_week_context_with_file_patterns():
+    """Test context filtering by file patterns."""
+    mock_materials = {
+        "week1": {
+            "1.learning-sheet.typ": "Learning sheet content",
+            "1.validation.typ": "Validation content",
+            "1.test.typ": "Test content (should be filtered)",
+        }
+    }
+    
+    # With patterns
+    context = get_week_context(mock_materials, week_num=1, file_patterns=["*learning-sheet*"])
+    assert "Learning sheet" in context
+    assert "Validation" not in context
+    assert "Test content" not in context
 
 
 # =============================================================================
@@ -151,21 +173,12 @@ def test_chatbot_commands_with_mock():
         
         bot = ChatBot(model="gpt-4o", api_key="fake-key-for-testing")
         
-        # Test /help command
-        result = bot.get_response("user1", "/help")
-        assert "DSAA3071" in result
-        assert "Theory of Computation" in result
-        
-        # Test /end command
-        result = bot.get_response("user1", "/end")
+        # Test /reset command
+        result = bot.get_dm_response("user1", "/reset")
         assert "cleared" in result.lower()
         
-        # Test /week command
-        result = bot.get_response("user1", "/week 1")
-        assert "week" in result.lower()
-        
-        # Test invalid week
-        result = bot.get_response("user1", "/week 99")
+        # Test /week command (no materials loaded, so need to check response)
+        result = bot.get_dm_response("user1", "/week 99")
         assert "not found" in result.lower() or "available" in result.lower()
 
 
@@ -176,12 +189,11 @@ def test_chatbot_model_detection():
         
         # GPT-4o
         bot = ChatBot(model="gpt-4o", api_key="fake-key")
-        assert bot.context_window == 128_000
         assert bot.max_output_tokens == 16_384
+        assert bot.encoding.name == "o200k_base"
         
         # GPT-5.2
         bot = ChatBot(model="gpt-5.2", api_key="fake-key")
-        assert bot.context_window == 400_000
         assert bot.max_output_tokens == 32_768
         
         # Custom max_output_tokens override
@@ -190,13 +202,14 @@ def test_chatbot_model_detection():
 
 
 def test_chatbot_token_counting():
-    """Test token counting functionality."""
+    """Test token counting via encoding attribute."""
     with patch('chatgpt.OpenAIClient') as MockClient:
         MockClient.return_value = MagicMock()
         
         bot = ChatBot(model="gpt-4o", api_key="fake-key")
         
-        tokens = bot.count_tokens("Hello, world!")
+        # Token counting is done via the encoding attribute
+        tokens = len(bot.encoding.encode("Hello, world!"))
         assert tokens > 0
         assert isinstance(tokens, int)
 
@@ -217,7 +230,11 @@ def test_chatbot_responses_api_call():
         mock_client.responses.create.return_value = mock_response
         
         bot = ChatBot(model="gpt-4o", api_key="fake-key")
-        result = bot.get_response("user1", "What is a DFA?")
+        # Set a week first (required for DM mode)
+        bot.user_weeks["user1"] = 1
+        bot.course_materials = {"week1": {"test.typ": "test content"}}
+        
+        result = bot.get_dm_response("user1", "What is a DFA?")
         
         # Verify the response
         assert "test response" in result
@@ -256,40 +273,38 @@ def test_chatbot_conversation_continuity():
         mock_client.responses.create.side_effect = [mock_response1, mock_response2]
         
         bot = ChatBot(model="gpt-4o", api_key="fake-key")
+        # Set a week first (required for DM mode)
+        bot.user_weeks["user1"] = 1
+        bot.course_materials = {"week1": {"test.typ": "test content"}}
         
         # First message
-        bot.get_response("user1", "Hello")
+        bot.get_dm_response("user1", "Hello")
         assert bot.user_response_ids["user1"] == "resp_123"
         
         # Second message should include previous_response_id
-        bot.get_response("user1", "Follow up question")
+        bot.get_dm_response("user1", "Follow up question")
         second_call = mock_client.responses.create.call_args_list[1]
         assert second_call.kwargs["previous_response_id"] == "resp_123"
 
 
-def test_chatbot_fallback_to_chat_completions():
-    """Test fallback to Chat Completions when Responses API fails."""
+def test_chatbot_error_handling():
+    """Test error handling when Responses API fails."""
     with patch('chatgpt.OpenAIClient') as MockClient:
         mock_client = MagicMock()
         MockClient.return_value = mock_client
         
         # Make responses.create fail
-        mock_client.responses.create.side_effect = Exception("Responses API not available")
-        
-        # Mock chat completions fallback
-        mock_completion = MagicMock()
-        mock_completion.choices = [MagicMock()]
-        mock_completion.choices[0].message.content = "Fallback response"
-        mock_completion.usage.prompt_tokens = 100
-        mock_completion.usage.completion_tokens = 50
-        mock_completion.usage.total_tokens = 150
-        mock_client.chat.completions.create.return_value = mock_completion
+        mock_client.responses.create.side_effect = Exception("API error")
         
         bot = ChatBot(model="gpt-4o", api_key="fake-key")
-        result = bot.get_response("user1", "Hello")
+        # Set a week first (required for DM mode)
+        bot.user_weeks["user1"] = 1
+        bot.course_materials = {"week1": {"test.typ": "test content"}}
         
-        assert "Fallback response" in result
-        mock_client.chat.completions.create.assert_called_once()
+        result = bot.get_dm_response("user1", "Hello")
+        
+        # Should return error message, not crash
+        assert "Error" in result or "error" in result
 
 
 # =============================================================================
@@ -314,3 +329,294 @@ def test_real_api_response(chatbot_with_api):
     assert len(response) > 0
     # Clean up
     chatbot_with_api.user_response_ids.pop("test_user", None)
+
+
+# =============================================================================
+# Zulip Mention Pattern Tests
+# =============================================================================
+
+class TestMentionPatterns:
+    """Test Zulip mention pattern matching."""
+    
+    @pytest.fixture
+    def mention_pattern(self):
+        """Create mention pattern for bot named 'ChatGPT'."""
+        bot_name = "ChatGPT"
+        return rf"@_?\*\*{re.escape(bot_name)}(\|\d+)?\*\*"
+    
+    def test_regular_mention(self, mention_pattern):
+        """Test regular @**BotName** mention."""
+        message = "@**ChatGPT** What is a DFA?"
+        assert re.match(mention_pattern, message)
+        cleaned = re.sub(mention_pattern, "", message).strip()
+        assert cleaned == "What is a DFA?"
+    
+    def test_quote_reply_mention(self, mention_pattern):
+        """Test quote reply @_**BotName|ID** mention."""
+        message = "@_**ChatGPT|132** Can you explain more?"
+        assert re.match(mention_pattern, message)
+        cleaned = re.sub(mention_pattern, "", message).strip()
+        assert cleaned == "Can you explain more?"
+    
+    def test_mention_with_id_no_underscore(self, mention_pattern):
+        """Test @**BotName|ID** mention (without underscore)."""
+        message = "@**ChatGPT|132** Another question"
+        assert re.match(mention_pattern, message)
+        cleaned = re.sub(mention_pattern, "", message).strip()
+        assert cleaned == "Another question"
+    
+    def test_mention_not_at_start(self, mention_pattern):
+        """Test that mention not at start doesn't match."""
+        message = "Hello @**ChatGPT** how are you?"
+        assert not re.match(mention_pattern, message)
+    
+    def test_mention_with_multiline(self, mention_pattern):
+        """Test mention with multiline message."""
+        message = "@**ChatGPT** First line\nSecond line\nThird line"
+        assert re.match(mention_pattern, message)
+        cleaned = re.sub(mention_pattern, "", message).strip()
+        assert cleaned == "First line\nSecond line\nThird line"
+    
+    def test_mention_only(self, mention_pattern):
+        """Test message that is only a mention."""
+        message = "@**ChatGPT**"
+        assert re.match(mention_pattern, message)
+        cleaned = re.sub(mention_pattern, "", message).strip()
+        assert cleaned == ""
+    
+    def test_wrong_bot_name(self, mention_pattern):
+        """Test that wrong bot name doesn't match."""
+        message = "@**OtherBot** Hello"
+        assert not re.match(mention_pattern, message)
+    
+    def test_quote_reply_with_quote_block(self, mention_pattern):
+        """Test stripping quote blocks from quote-replies."""
+        message = '''@_**ChatGPT|132** [said](https://example.com/link):
+````quote
+> original question
+
+Previous bot response here...
+------
+Tokens: 1000 (input) + 100 (output) = 1100
+````
+
+What is an NFA?'''
+        
+        # Strip mention
+        prompt = re.sub(mention_pattern, "", message).strip()
+        
+        # Strip quote block
+        quote_pattern = r'\[said\]\([^)]+\):\s*(`{3,})quote\s.*?\1'
+        prompt = re.sub(quote_pattern, "", prompt, flags=re.DOTALL).strip()
+        
+        assert prompt == "What is an NFA?"
+    
+    def test_nested_quote_reply(self, mention_pattern):
+        """Test stripping nested quote blocks."""
+        message = '''@_**ChatGPT|132** [said](https://example.com/link):
+````quote
+@_**ChatGPT|132** [said](https://example.com/other):
+```quote
+> first question
+First response
+```
+Second question
+````
+
+Third question here.'''
+        
+        # Strip ONLY FIRST mention (count=1 to preserve inner mentions)
+        original_message = re.sub(mention_pattern, "", message, count=1).strip()
+        
+        # Inner ChatGPT mention should be preserved
+        assert "@_**ChatGPT|132** [said]" in original_message
+        
+        # Strip quote block for prompt
+        quote_pattern = r'\[said\]\([^)]+\):\s*(`{3,})quote\s.*?\1'
+        prompt = re.sub(quote_pattern, "", original_message, flags=re.DOTALL).strip()
+        
+        assert prompt == "Third question here."
+    
+    def test_preserve_inner_bot_mentions(self, mention_pattern):
+        """Test that bot mentions inside quotes are preserved."""
+        message = '''@**ChatGPT** @_**jinguoliu|8** [said](https://example.com):
+````quote
+@_**ChatGPT|132** [said](https://example.com/prev):
+```quote
+> original question
+Bot response
+```
+Follow up
+````
+
+New question'''
+        
+        # Strip only first bot mention
+        original_message = re.sub(mention_pattern, "", message, count=1).strip()
+        
+        # Outer user attribution preserved
+        assert "@_**jinguoliu|8** [said]" in original_message
+        # Inner bot mention preserved
+        assert "@_**ChatGPT|132** [said]" in original_message
+    
+    def test_user_quote_with_bot_mention(self, mention_pattern):
+        """Test when user quotes another user's message that contains bot mention."""
+        # User quotes their own previous message that mentioned the bot
+        message = '''@**ChatGPT** @_**jinguoliu|8** [said](https://zulip.hkust-gz.edu.cn/#narrow/channel/128-Teaching-DSAA3071-2026-Spring/topic/GPT.20test/near/95980):
+```quote
+@**ChatGPT** You are so good.
+```
+
+What is a DFA?'''
+        
+        # Strip only the first bot mention (the one addressing the bot)
+        prompt = re.sub(mention_pattern, "", message, count=1).strip()
+        
+        # The user attribution and inner bot mention should be preserved
+        assert "@_**jinguoliu|8** [said]" in prompt
+        
+        # Strip quote block to get the actual question
+        quote_pattern = r'@_\*\*[^*]+\*\*\s*\[said\]\([^)]+\):\s*(`{3,})quote\s.*?\1'
+        prompt = re.sub(quote_pattern, "", prompt, flags=re.DOTALL).strip()
+        
+        assert prompt == "What is a DFA?"
+
+
+# =============================================================================
+# Response Formatting Tests
+# =============================================================================
+
+class TestResponseFormatting:
+    """Test response formatting with quotes and mentions."""
+    
+    def test_quote_message_simple(self):
+        """Test quoting a simple message."""
+        from chatgpt import ChatBot
+        with patch('chatgpt.OpenAIClient'):
+            bot = ChatBot(model="gpt-4o", api_key="fake")
+            result = bot._quote_message("Hello world")
+            assert result == "````quote\nHello world\n````"
+    
+    def test_quote_message_with_triple_backticks(self):
+        """Test quoting a message containing triple backticks."""
+        from chatgpt import ChatBot
+        with patch('chatgpt.OpenAIClient'):
+            bot = ChatBot(model="gpt-4o", api_key="fake")
+            message = "```quote\ninner content\n```"
+            result = bot._quote_message(message)
+            # Should use 4 backticks since content has 3
+            assert result.startswith("````quote\n")
+            assert result.endswith("\n````")
+            assert "```quote" in result
+    
+    def test_quote_message_with_four_backticks(self):
+        """Test quoting a message containing four backticks."""
+        from chatgpt import ChatBot
+        with patch('chatgpt.OpenAIClient'):
+            bot = ChatBot(model="gpt-4o", api_key="fake")
+            message = "````quote\ninner content\n````"
+            result = bot._quote_message(message)
+            # Should use 5 backticks since content has 4
+            assert result.startswith("`````quote\n")
+            assert result.endswith("\n`````")
+    
+    def test_quote_message_nested(self):
+        """Test quoting a nested quote message."""
+        from chatgpt import ChatBot
+        with patch('chatgpt.OpenAIClient'):
+            bot = ChatBot(model="gpt-4o", api_key="fake")
+            message = '''@_**user|123** [said](url):
+````quote
+@_**bot|456** [said](url2):
+```quote
+original
+```
+reply
+````
+
+new question'''
+            result = bot._quote_message(message)
+            # Should use 5 backticks since content has 4
+            assert result.startswith("`````quote\n")
+            assert result.endswith("\n`````")
+            # Content preserved
+            assert "@_**user|123**" in result
+            assert "@_**bot|456**" in result
+    
+    def test_format_response_with_mention(self):
+        """Test response formatting with user mention."""
+        from chatgpt import ChatBot
+        with patch('chatgpt.OpenAIClient'):
+            bot = ChatBot(model="gpt-4o", api_key="fake")
+            
+            # Mock usage object
+            usage = MagicMock()
+            usage.input_tokens = 100
+            usage.output_tokens = 50
+            usage.total_tokens = 150
+            
+            result = bot._format_response(
+                question="What is DFA?",
+                reply="A DFA is a deterministic finite automaton.",
+                usage=usage,
+                sender_name="jinguoliu",
+                sender_id=8,
+                message_url="#narrow/channel/128/topic/test/near/123"
+            )
+            
+            # Check mention format
+            assert "@_**jinguoliu|8** [said](#narrow/channel/128/topic/test/near/123):" in result
+            # Check quote block
+            assert "````quote" in result
+            assert "What is DFA?" in result
+            # Check reply
+            assert "A DFA is a deterministic finite automaton." in result
+            # Check tokens
+            assert "Tokens: 100 (input) + 50 (output) = 150" in result
+    
+    def test_format_response_without_url(self):
+        """Test response formatting without message URL."""
+        from chatgpt import ChatBot
+        with patch('chatgpt.OpenAIClient'):
+            bot = ChatBot(model="gpt-4o", api_key="fake")
+            
+            usage = MagicMock()
+            usage.input_tokens = 100
+            usage.output_tokens = 50
+            usage.total_tokens = 150
+            
+            result = bot._format_response(
+                question="Hello",
+                reply="Hi there!",
+                usage=usage,
+                sender_name="user",
+                sender_id=123
+            )
+            
+            # Should have mention without [said](url)
+            assert "@_**user|123**:" in result
+            assert "[said]" not in result
+    
+    def test_format_response_without_sender(self):
+        """Test response formatting without sender info."""
+        from chatgpt import ChatBot
+        with patch('chatgpt.OpenAIClient'):
+            bot = ChatBot(model="gpt-4o", api_key="fake")
+            
+            usage = MagicMock()
+            usage.input_tokens = 100
+            usage.output_tokens = 50
+            usage.total_tokens = 150
+            
+            result = bot._format_response(
+                question="Hello",
+                reply="Hi there!",
+                usage=usage
+            )
+            
+            # Should not have mention
+            assert "@_**" not in result
+            # Should still have quote and reply
+            assert "````quote" in result
+            assert "Hello" in result
+            assert "Hi there!" in result

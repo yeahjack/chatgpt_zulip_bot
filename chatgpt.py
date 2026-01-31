@@ -91,8 +91,9 @@ def get_model_specs(model: str) -> tuple[int, int, str]:
 
 DEFAULT_COURSE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "DSAA3071TheoryOfComputation")
 
-# Pattern to detect "/week N" command
+# Command patterns
 WEEK_PATTERN = re.compile(r'^/week\s*(\d+)\b', re.IGNORECASE)
+RESET_PATTERN = re.compile(r'^/reset\b', re.IGNORECASE)
 
 
 def load_course_materials(course_dir: str = None) -> dict:
@@ -242,40 +243,92 @@ class ChatBot:
         """Base instructions for AI assistant."""
         return """You are an expert teaching assistant for DSAA3071 Theory of Computation at HKUST(GZ).
 
-IMPORTANT: You are responding in Zulip chat. For math equations:
-- Use $$ ... $$ for LaTeX math (both inline and block)
-- MUST have spaces around the delimiters: ` $$x^2$$ ` not `$$x^2$$`
-- Example: The transition function is ` $$\\delta: Q \\times \\Sigma \\to Q$$ `
-
 Your role is to:
 - Help students understand concepts in automata theory, formal languages, and computability
 - Explain DFA, NFA, regular expressions, context-free grammars, pushdown automata, and Turing machines
 - Guide students through proofs and problem-solving techniques
-- Be concise but thorough in explanations"""
+- Be concise but thorough in explanations
+
+=== CRITICAL FORMATTING RULE FOR ZULIP ===
+You MUST format ALL math with spaces around $$ delimiters. This is NON-NEGOTIABLE.
+Do NOT use backticks around math. Only use $$ with spaces.
+
+CORRECT format (note the spaces before and after $$):
+- "The formula is $$x^2$$ here" - spaces around $$
+- "where $$\\delta: Q \\times \\Sigma \\to Q$$ defines" - spaces around $$
+- "The set $$Q$$ is finite." - spaces around $$
+
+WRONG format (will break rendering):
+- "The formula is$$x^2$$here" - no spaces
+- "$$Q$$:" - no space after
+
+Pattern: always write " $$content$$ " with a space before the opening $$ and after the closing $$.
+=== END CRITICAL FORMATTING RULE ==="""
     
-    def _format_response(self, question: str, reply: str, usage) -> str:
-        """Format response with quoted question and usage info."""
-        # Quote the question (Zulip markdown)
-        quoted_question = "\n".join(f"> {line}" for line in question.split("\n"))
+    def _quote_message(self, text: str) -> str:
+        """Quote a message using Zulip markdown.
+        
+        Uses quote block syntax with enough backticks to handle nested code blocks.
+        """
+        # Find the longest sequence of backticks in the text
+        max_backticks = 0
+        current_count = 0
+        for char in text:
+            if char == '`':
+                current_count += 1
+                max_backticks = max(max_backticks, current_count)
+            else:
+                current_count = 0
+        
+        # Use one more backtick than the max found (minimum 4 for quote blocks)
+        fence = '`' * max(4, max_backticks + 1)
+        return f"{fence}quote\n{text}\n{fence}"
+    
+    def _format_response(self, question: str, reply: str, usage, sender_name: str = None, sender_id: int = None, message_url: str = None) -> str:
+        """Format response with user mention, quoted question, and usage info."""
+        quoted_question = self._quote_message(question)
+        
+        # Add user mention in Zulip quote format: @_**Name|ID** [said](url):
+        if sender_name and sender_id and message_url:
+            mention = f"@_**{sender_name}|{sender_id}** [said]({message_url}):\n"
+        elif sender_name and sender_id:
+            mention = f"@_**{sender_name}|{sender_id}**:\n"
+        else:
+            mention = ""
         
         return (
-            f"{quoted_question}\n\n"
+            f"{mention}{quoted_question}\n\n"
             f"{reply}\n"
             f"------\n"
             f"Tokens: {usage.input_tokens:,} (input) + {usage.output_tokens:,} (output) "
             f"= {usage.total_tokens:,}"
         )
     
-    def get_stream_response(self, user_id: str, prompt: str) -> str:
+    def get_stream_response(self, user_id: str, prompt: str, original_message: str = None, sender_name: str = None, sender_id: int = None, message_url: str = None) -> str:
         """
         Handle stream message: RAG mode, no chaining.
         
         Uses vector store to search relevant content per query.
+        
+        Args:
+            user_id: User identifier (email)
+            prompt: The actual question to process (quote blocks stripped)
+            original_message: Full message for quoting in response (optional, defaults to prompt)
+            sender_name: Sender's display name for @mention in response
+            sender_id: Sender's numeric ID for Zulip mention format
+            message_url: URL to the original message for [said](url) format
         """
         logging.info(f"Stream message from {user_id}")
         
+        # Use original_message for quoting if provided, otherwise use prompt
+        quote_text = original_message if original_message else prompt
+        
         if not self.vector_store_id:
-            return "> " + prompt + "\n\nError: RAG not configured. Please set VECTOR_STORE_ID."
+            return (
+                self._quote_message(quote_text) + "\n\n"
+                f"**Error:** RAG not configured for stream messages.\n\n"
+                f"Please set `VECTOR_STORE_ID` in config.ini (run `make upload` first)."
+            )
         
         try:
             instructions = self._get_base_instructions() + """
@@ -296,11 +349,17 @@ Search for relevant content to answer the question accurately."""
             )
             
             reply = response.output_text or "I couldn't generate a response."
-            return self._format_response(prompt, reply, response.usage)
+            return self._format_response(quote_text, reply, response.usage, sender_name, sender_id, message_url)
             
         except Exception as e:
             logging.error(f"Stream response error: {e}")
-            return f"> {prompt}\n\nError: {str(e)}"
+            if sender_name and sender_id and message_url:
+                mention = f"@_**{sender_name}|{sender_id}** [said]({message_url}):\n"
+            elif sender_name and sender_id:
+                mention = f"@_**{sender_name}|{sender_id}**:\n"
+            else:
+                mention = ""
+            return mention + self._quote_message(quote_text) + f"\n\nError: {str(e)}"
     
     def get_dm_response(self, user_id: str, prompt: str) -> str:
         """
@@ -348,6 +407,11 @@ Search for relevant content to answer the question accurately."""
         
         # Check if user has a week set
         if user_id not in self.user_weeks:
+            if not self.available_weeks:
+                return (
+                    f"> {prompt}\n\n"
+                    f"No course materials found. Please check COURSE_DIR configuration."
+                )
             weeks_list = ", ".join(map(str, self.available_weeks))
             return (
                 f"> {prompt}\n\n"
@@ -365,6 +429,9 @@ Search for relevant content to answer the question accurately."""
                 week_num,
                 self.file_patterns
             )
+            
+            if not week_context.strip():
+                week_context = "(No materials found for this week matching the file patterns.)"
             
             instructions = self._get_base_instructions() + f"""
 

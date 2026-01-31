@@ -110,6 +110,8 @@ class ChatGPTZulipBot(zulip.Client):
         """Process incoming messages and respond."""
         sender_id = msg["sender_id"]
         sender_email = msg["sender_email"]
+        sender_name = msg.get("sender_full_name", "")
+        message_id = msg.get("id")
         message_content = msg["content"]
         message_type = msg["type"]
         
@@ -117,8 +119,10 @@ class ChatGPTZulipBot(zulip.Client):
         if sender_id == self.bot_id:
             return
         
-        # Handle mentions in streams
-        if message_content.startswith(f"@**{self.bot_name}**"):
+        # Handle mentions in streams (regular @**Name** or quote reply @_**Name|ID**)
+        # Use search() to detect mentions anywhere in the message, not just at the start
+        mention_pattern = rf"@_?\*\*{re.escape(self.bot_name)}(\|\d+)?\*\*"
+        if re.search(mention_pattern, message_content):
             stream_id = msg.get("stream_id")
             stream_name = msg.get("display_recipient")  # Stream name for stream messages
             topic = msg.get("subject")
@@ -128,7 +132,14 @@ class ChatGPTZulipBot(zulip.Client):
                 logging.info(f"Ignored message from unauthorized stream: {stream_name}")
                 return
             
-            prompt = re.sub(rf"@\*\*{self.bot_name}\*\*", "", message_content).strip()
+            # Strip the triggering bot mention (and [said](url): if quote-reply)
+            # This removes: "@**ChatGPT** " or "@_**ChatGPT|132** [said](url):"
+            trigger_pattern = rf"@_?\*\*{re.escape(self.bot_name)}(\|\d+)?\*\*(\s*\[said\]\([^)]+\):)?\s*"
+            original_message = re.sub(trigger_pattern, "", message_content, count=1).strip()
+            
+            # For AI processing: also strip quote blocks
+            quote_pattern = r'(`{3,})quote\s.*?\1'
+            prompt = re.sub(quote_pattern, "", original_message, flags=re.DOTALL).strip()
             
             # Handle admin commands
             if sender_id == self.user_id and prompt.lower() == "/refresh":
@@ -136,7 +147,16 @@ class ChatGPTZulipBot(zulip.Client):
                 response = f"Refreshed subscriber list. Now tracking {len(self.allowed_users)} users."
             else:
                 # Stream: RAG mode, no chaining
-                response = self.chatbot.get_stream_response(sender_email, prompt)
+                # Construct message URL for [said](url) format
+                # URL encode the topic for the link
+                import urllib.parse
+                encoded_topic = urllib.parse.quote(topic, safe='')
+                message_url = f"#narrow/channel/{stream_id}-{stream_name}/topic/{encoded_topic}/near/{message_id}"
+                
+                response = self.chatbot.get_stream_response(
+                    sender_email, prompt, original_message, 
+                    sender_name, sender_id, message_url
+                )
             
             self.send_message({
                 "type": "stream",
