@@ -225,9 +225,8 @@ class ChatBot:
         self.model = model
         self.client = OpenAIClient(api_key=api_key)
         
-        # Get model specifications
-        context_window, default_max_output, encoding_name = get_model_specs(model)
-        self.context_window = context_window
+        # Get model specifications (encoding and default max output)
+        _, default_max_output, encoding_name = get_model_specs(model)
         self.max_output_tokens = max_output_tokens or default_max_output
         self.encoding = tiktoken.get_encoding(encoding_name)
         
@@ -238,7 +237,7 @@ class ChatBot:
         # Load course materials
         self.course_materials = load_course_materials(course_dir)
         
-        logging.info(f"ChatBot initialized: model={model}, context={context_window:,}, max_output={self.max_output_tokens:,}")
+        logging.info(f"ChatBot initialized: model={model}, max_output={self.max_output_tokens:,}")
         logging.info(f"Loaded course materials: {sorted(self.course_materials.keys())}")
     
     def count_tokens(self, text: str) -> int:
@@ -364,7 +363,7 @@ Your role is to:
                 f"{reply}\n"
                 f"------\n"
                 f"Tokens: {usage.input_tokens:,} (input) + {usage.output_tokens:,} (output) "
-                f"= {usage.total_tokens:,} / {self.context_window:,}"
+                f"= {usage.total_tokens:,}"
             )
             
         except Exception as e:
@@ -411,7 +410,7 @@ Your role is to:
                 f"{reply}\n"
                 f"------\n"
                 f"Tokens: {usage.prompt_tokens:,} (prompt) + {usage.completion_tokens:,} (response) "
-                f"= {usage.total_tokens:,} / {self.context_window:,}"
+                f"= {usage.total_tokens:,}"
             )
             
         except Exception as e:
