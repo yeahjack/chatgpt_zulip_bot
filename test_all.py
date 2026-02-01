@@ -173,13 +173,14 @@ def test_chatbot_commands_with_mock():
         
         bot = ChatBot(model="gpt-4o", api_key="fake-key-for-testing")
         
-        # Test /reset command
+        # Test /reset command - should work even without vector_store_id
         result = bot.get_dm_response("user1", "/reset")
         assert "cleared" in result.lower()
         
-        # Test /week command (no materials loaded, so need to check response)
-        result = bot.get_dm_response("user1", "/week 99")
-        assert "not found" in result.lower() or "available" in result.lower()
+        # Test DM without vector store configured - should return error
+        assert bot.vector_store_id is None
+        result = bot.get_dm_response("user1", "Hello")
+        assert "not configured" in result.lower() or "vector" in result.lower()
 
 
 def test_chatbot_model_detection():
@@ -214,25 +215,26 @@ def test_chatbot_token_counting():
         assert isinstance(tokens, int)
 
 
-def test_chatbot_responses_api_call():
-    """Test that the bot calls the Responses API correctly."""
+def test_chatbot_conversations_api_call():
+    """Test that the bot calls the Conversations API correctly for DM mode."""
     with patch('chatgpt.OpenAIClient') as MockClient:
         mock_client = MagicMock()
         MockClient.return_value = mock_client
         
-        # Mock the responses.create method
+        # Mock conversation creation
+        mock_conversation = MagicMock()
+        mock_conversation.id = "conv_123"
+        mock_client.conversations.create.return_value = mock_conversation
+        
+        # Mock response
         mock_response = MagicMock()
-        mock_response.id = "resp_123"
         mock_response.output_text = "This is a test response about DFA."
         mock_response.usage.input_tokens = 100
         mock_response.usage.output_tokens = 50
         mock_response.usage.total_tokens = 150
         mock_client.responses.create.return_value = mock_response
         
-        bot = ChatBot(model="gpt-4o", api_key="fake-key")
-        # Set a week first (required for DM mode)
-        bot.user_weeks["user1"] = 1
-        bot.course_materials = {"week1": {"test.typ": "test content"}}
+        bot = ChatBot(model="gpt-4o", api_key="fake-key", vector_store_id="vs_123")
         
         result = bot.get_dm_response("user1", "What is a DFA?")
         
@@ -240,57 +242,54 @@ def test_chatbot_responses_api_call():
         assert "test response" in result
         assert "Tokens:" in result
         
-        # Verify the API was called with correct params
+        # Verify conversation was created
+        mock_client.conversations.create.assert_called_once()
+        
+        # Verify responses.create was called with conversation
         mock_client.responses.create.assert_called_once()
         call_kwargs = mock_client.responses.create.call_args.kwargs
-        assert call_kwargs["model"] == "gpt-4o"
-        # Input is now a list of messages (sliding window)
-        assert isinstance(call_kwargs["input"], list)
-        assert call_kwargs["input"][-1]["content"] == "What is a DFA?"
-        assert "instructions" in call_kwargs
+        assert call_kwargs["conversation"] == {"id": "conv_123"}
+        assert call_kwargs["input"] == "What is a DFA?"
 
 
-def test_chatbot_conversation_continuity():
-    """Test that conversation IDs are tracked for multi-turn conversations."""
+def test_chatbot_conversation_reuse():
+    """Test that conversations are reused for multi-turn conversations."""
     with patch('chatgpt.OpenAIClient') as MockClient:
         mock_client = MagicMock()
         MockClient.return_value = mock_client
         
-        # Mock responses
-        mock_response1 = MagicMock()
-        mock_response1.id = "resp_123"
-        mock_response1.output_text = "First response"
-        mock_response1.usage.input_tokens = 100
-        mock_response1.usage.output_tokens = 50
-        mock_response1.usage.total_tokens = 150
+        # Mock conversation creation (only called once)
+        mock_conversation = MagicMock()
+        mock_conversation.id = "conv_123"
+        mock_client.conversations.create.return_value = mock_conversation
         
-        mock_response2 = MagicMock()
-        mock_response2.id = "resp_456"
-        mock_response2.output_text = "Second response"
-        mock_response2.usage.input_tokens = 150
-        mock_response2.usage.output_tokens = 60
-        mock_response2.usage.total_tokens = 210
+        # Mock response
+        mock_response = MagicMock()
+        mock_response.output_text = "Response"
+        mock_response.usage.input_tokens = 100
+        mock_response.usage.output_tokens = 50
+        mock_response.usage.total_tokens = 150
+        mock_client.responses.create.return_value = mock_response
         
-        mock_client.responses.create.side_effect = [mock_response1, mock_response2]
+        bot = ChatBot(model="gpt-4o", api_key="fake-key", vector_store_id="vs_123")
         
-        bot = ChatBot(model="gpt-4o", api_key="fake-key")
-        # Set a week first (required for DM mode)
-        bot.user_weeks["user1"] = 1
-        bot.course_materials = {"week1": {"test.typ": "test content"}}
-        
-        # First message
+        # First message - should create conversation
         bot.get_dm_response("user1", "Hello")
         assert "user1" in bot.user_conversations
-        assert len(bot.user_conversations["user1"]) == 2  # user + assistant
+        assert bot.user_conversations["user1"] == "conv_123"
         
-        # Second message should include conversation history in input
+        # Second message - should reuse same conversation
         bot.get_dm_response("user1", "Follow up question")
-        second_call = mock_client.responses.create.call_args_list[1]
-        input_messages = second_call.kwargs["input"]
-        assert len(input_messages) == 3  # previous user, previous assistant, new user
-        assert input_messages[0]["role"] == "user"
-        assert input_messages[1]["role"] == "assistant"
-        assert input_messages[2]["content"] == "Follow up question"
+        
+        # Conversation should only be created once
+        assert mock_client.conversations.create.call_count == 1
+        
+        # But responses.create should be called twice
+        assert mock_client.responses.create.call_count == 2
+        
+        # Both calls should use the same conversation
+        for call in mock_client.responses.create.call_args_list:
+            assert call.kwargs["conversation"] == {"id": "conv_123"}
 
 
 def test_chatbot_error_handling():
@@ -299,13 +298,15 @@ def test_chatbot_error_handling():
         mock_client = MagicMock()
         MockClient.return_value = mock_client
         
+        # Mock conversation creation
+        mock_conversation = MagicMock()
+        mock_conversation.id = "conv_123"
+        mock_client.conversations.create.return_value = mock_conversation
+        
         # Make responses.create fail
         mock_client.responses.create.side_effect = Exception("API error")
         
-        bot = ChatBot(model="gpt-4o", api_key="fake-key")
-        # Set a week first (required for DM mode)
-        bot.user_weeks["user1"] = 1
-        bot.course_materials = {"week1": {"test.typ": "test content"}}
+        bot = ChatBot(model="gpt-4o", api_key="fake-key", vector_store_id="vs_123")
         
         result = bot.get_dm_response("user1", "Hello")
         

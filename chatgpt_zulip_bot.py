@@ -208,15 +208,12 @@ def serve(config_file: str = "config.ini"):
     model = settings.get("MODEL") or settings.get("API_VERSION", "gpt-4o")
     course_dir = settings.get("COURSE_DIR")
     
-    # File patterns to filter course materials (comma-separated, for DM weekly mode)
+    # File patterns to filter course materials (comma-separated)
     file_patterns_str = settings.get("FILE_PATTERNS", "")
     file_patterns = [p.strip() for p in file_patterns_str.split(",") if p.strip()]
     
-    # Vector store ID for RAG (required for stream mode)
+    # Vector store ID for RAG (both modes)
     vector_store_id = settings.get("VECTOR_STORE_ID")
-    
-    # Conversation memory: number of Q&A turns to keep (0 = stateless)
-    max_conversation_turns = int(settings.get("MAX_CONVERSATION_TURNS", "5"))
     
     # Optional: override auto-detected max tokens
     max_output_tokens = None
@@ -243,7 +240,6 @@ def serve(config_file: str = "config.ini"):
         file_patterns=file_patterns,
         vector_store_id=vector_store_id,
         max_output_tokens=max_output_tokens,
-        max_conversation_turns=max_conversation_turns,
     )
     
     # Initialize Zulip bot
@@ -254,18 +250,16 @@ def serve(config_file: str = "config.ini"):
     
     # Print startup info
     print(f"ChatGPT bot starting (model: {model})")
-    print(f"  Stream mode: RAG (vector store: {vector_store_id or 'NOT SET'})")
-    memory_desc = f"sliding window of {max_conversation_turns} turns" if max_conversation_turns > 0 else "stateless"
-    print(f"  DM mode: Weekly ({memory_desc}, weeks: {chatbot.available_weeks})")
-    if file_patterns:
-        print(f"  File patterns: {file_patterns}")
+    print(f"  Stream mode: Responses API + RAG")
+    print(f"  DM mode: Responses API + Conversations")
+    print(f"  Vector store: {vector_store_id or 'NOT SET'}")
     
     if allowed_streams:
         print(f"  Access restricted to: {', '.join(allowed_streams)}")
         print(f"  Authorized users: {len(bot.allowed_users)}")
     
     if not vector_store_id:
-        print("\n⚠️  WARNING: VECTOR_STORE_ID not set. Stream messages will fail.")
+        print("\n⚠️  WARNING: VECTOR_STORE_ID not set. RAG/file search will not work.")
         print("   Run 'make upload' to create a vector store.\n")
     
     bot.send_notification("NOTICE: The ChatGPT bot is now online.")

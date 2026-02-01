@@ -180,13 +180,19 @@ def main():
     print(f"Exclude patterns: {exclude_patterns}")
     print()
     
-    upload_course_files(
+    # Upload files and create vector store
+    vector_store_id = upload_course_files(
         api_key=api_key,
         course_dir=course_dir,
         file_patterns=file_patterns,
         exclude_patterns=exclude_patterns,
         vector_store_name="DSAA3071 Theory of Computation"
     )
+    
+    print(f"\n{'='*60}")
+    print("SUCCESS! Add this to your config.ini:")
+    print(f"VECTOR_STORE_ID = {vector_store_id}")
+    print(f"{'='*60}")
 
 
 if __name__ == "__main__":

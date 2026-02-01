@@ -5,6 +5,7 @@
 OPENAI_API_KEY = YOUR_OPENAI_API_KEY
 
 # Model name (e.g., gpt-5.2, gpt-4o, gpt-4-turbo, o1-mini)
+# Used for both Stream mode and DM mode
 MODEL = gpt-4o
 
 # =============================================================================
@@ -27,27 +28,28 @@ ALLOWED_STREAMS = DSAA3071-2026-Spring, Teaching-DSAA3071-2026-Spring
 COURSE_DIR = DSAA3071TheoryOfComputation
 
 # =============================================================================
-# Stream Mode: RAG (Retrieval-Augmented Generation)
+# OpenAI Resources (created by: make upload)
 # =============================================================================
-# Vector store ID for stream messages - upload course files first: make upload
-# Stream messages use RAG to search relevant content per query
+# Vector store ID - used for RAG file search in both modes
 VECTOR_STORE_ID = vs_xxxxxxxxxxxx
 
 # =============================================================================
-# DM Mode: Weekly with Conversation Memory
+# Stream Mode: RAG (Retrieval-Augmented Generation)
 # =============================================================================
-# In DM, users must specify which week to study (e.g., "week 3")
-# Then they can ask follow-up questions about that week's content
+# Stream messages use the vector store to search relevant content per query
+# No conversation memory - each message is independent
 
-# File patterns to filter which files to load per week (comma-separated)
+# =============================================================================
+# DM Mode: Responses API with Conversations
+# =============================================================================
+# DM mode uses OpenAI's Conversations API for automatic context management
+# - Conversations are stored by OpenAI (no manual history management)
+# - File search retrieves only relevant course materials (cost-effective)
+# - Use /reset to start a new conversation
+
+# File patterns to filter which files to upload (comma-separated)
 # Supports glob patterns: "*learning-sheet*", "*validation*"
 FILE_PATTERNS = *learning-sheet*, *validation*
-
-# Conversation memory: number of Q&A turns to keep (sliding window)
-# Higher = more context but more tokens; Lower = cheaper but less memory
-# Set to 0 to disable conversation memory entirely (stateless)
-# Default: 5 turns (10 messages)
-MAX_CONVERSATION_TURNS = 5
 
 # =============================================================================
 # Optional Settings

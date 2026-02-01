@@ -92,7 +92,6 @@ def get_model_specs(model: str) -> tuple[int, int, str]:
 DEFAULT_COURSE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "DSAA3071TheoryOfComputation")
 
 # Command patterns
-WEEK_PATTERN = re.compile(r'^/week\s*(\d+)\b', re.IGNORECASE)
 RESET_PATTERN = re.compile(r'^/reset\b', re.IGNORECASE)
 
 
@@ -191,24 +190,23 @@ class ChatBot:
     OpenAI-powered chatbot using the Responses API.
     
     Modes:
-    - Stream messages: RAG mode (vector store search, no chaining)
-    - DM messages: Weekly mode (user specifies week, with chaining)
+    - Stream messages: Responses API with RAG (vector store search, no chaining)
+    - DM messages: Responses API with Conversations (automatic context management)
     """
     
     def __init__(self, model: str, api_key: str, course_dir: str = None, 
                  file_patterns: list = None, vector_store_id: str = None,
-                 max_output_tokens: int = None, max_conversation_turns: int = 5):
+                 max_output_tokens: int = None):
         """
         Initialize the chatbot.
         
         Args:
             model: OpenAI model name
             api_key: OpenAI API key
-            course_dir: Path to course materials directory
+            course_dir: Path to course materials directory (for week detection)
             file_patterns: Patterns to filter course files
             vector_store_id: OpenAI Vector Store ID for RAG
             max_output_tokens: Override for max output tokens
-            max_conversation_turns: Number of Q&A turns to keep in DM mode (0 = stateless)
         """
         self.model = model
         self.client = OpenAIClient(api_key=api_key)
@@ -217,15 +215,13 @@ class ChatBot:
         self.max_output_tokens = max_output_tokens or default_max_output
         self.encoding = tiktoken.get_encoding(encoding_name)
         
-        # User state for DM mode
-        self.user_conversations = {}  # user_id -> list of {"role": str, "content": str}
-        self.user_weeks = {}          # user_id -> week number
-        self.max_conversation_turns = max_conversation_turns  # Keep last N exchanges (0 = stateless)
+        # User state for DM mode (Conversations API)
+        self.user_conversations = {}  # user_id -> conversation_id
         
-        # RAG settings
+        # OpenAI resources
         self.vector_store_id = vector_store_id
         
-        # Course materials
+        # Course materials (for week detection)
         self.file_patterns = file_patterns or []
         self.course_materials = load_course_materials(course_dir)
         
@@ -239,7 +235,7 @@ class ChatBot:
         logging.info(f"ChatBot initialized: model={model}")
         logging.info(f"Available weeks: {self.available_weeks}")
         if vector_store_id:
-            logging.info(f"RAG enabled: {vector_store_id}")
+            logging.info(f"Vector store: {vector_store_id}")
     
     def _get_base_instructions(self) -> str:
         """Base instructions for AI assistant."""
@@ -373,114 +369,68 @@ Search for relevant content to answer the question accurately."""
                 mention = ""
             return mention + self._quote_message(quote_text) + f"\n\nError: {str(e)}"
     
+    def _create_conversation(self, user_id: str) -> str:
+        """Create a new conversation for a user and return the conversation ID."""
+        conversation = self.client.conversations.create()
+        self.user_conversations[user_id] = conversation.id
+        logging.info(f"Created conversation {conversation.id} for user {user_id}")
+        return conversation.id
+    
     def get_dm_response(self, user_id: str, prompt: str) -> str:
         """
-        Handle DM message: Weekly mode with chaining.
+        Handle DM message using Responses API with Conversations.
         
-        User must specify which week to study. Follow-ups are supported.
+        OpenAI manages conversation context automatically.
+        File search retrieves relevant course materials per query.
         """
         logging.info(f"DM message from {user_id}")
         
         prompt_stripped = prompt.strip()
         
-        # Check for /reset command - clears conversation history only, keeps week
+        # Check for /reset command first - works even without full configuration
         if RESET_PATTERN.match(prompt_stripped):
-            self.user_conversations.pop(user_id, None)  # Clear conversation only
-            week_num = self.user_weeks.get(user_id)
-            if week_num:
-                return (
-                    f"Conversation cleared. Still studying **Week {week_num}**.\n\n"
-                    f"Commands: `/week N` to switch, `/reset` to clear conversation"
-                )
-            else:
-                weeks_list = ", ".join(map(str, self.available_weeks))
-                return (
-                    f"Conversation cleared.\n\n"
-                    f"Use `/week N` to start studying.\n\n"
-                    f"**Available weeks:** {weeks_list}"
-                )
+            self.user_conversations.pop(user_id, None)
+            return "Conversation cleared. Your next message will start a fresh conversation."
         
-        # Check if user is specifying a week with /week command
-        week_match = WEEK_PATTERN.match(prompt_stripped)
-        if week_match:
-            week_num = int(week_match.group(1))
-            if week_num in self.available_weeks:
-                self.user_weeks[user_id] = week_num
-                # Note: Does NOT clear conversation - /reset does that
-                return (
-                    f"Now studying **Week {week_num}**.\n\n"
-                    f"Commands: `/week N` to switch, `/reset` to clear conversation"
-                )
-            else:
-                return (
-                    f"Week {week_num} not found.\n\n"
-                    f"**Available weeks:** {', '.join(map(str, self.available_weeks))}"
-                )
-        
-        # Check if user has a week set
-        if user_id not in self.user_weeks:
-            if not self.available_weeks:
-                return "No course materials found. Please check COURSE_DIR configuration."
-            weeks_list = ", ".join(map(str, self.available_weeks))
+        # Check if vector store is configured (needed for file search)
+        if not self.vector_store_id:
             return (
-                f"Please specify which week you'd like to study.\n\n"
-                f"**Command:** `/week N` (e.g., `/week 3`)\n\n"
-                f"**Available weeks:** {weeks_list}"
+                "**Error:** Vector store not configured.\n\n"
+                "Please run `make upload` to create a vector store, then add `VECTOR_STORE_ID` to config.ini."
             )
-        
-        week_num = self.user_weeks[user_id]
         
         try:
-            # Load week context
-            week_context = get_week_context(
-                self.course_materials,
-                week_num,
-                self.file_patterns
-            )
+            # Get or create conversation for user
+            conversation_id = self.user_conversations.get(user_id)
+            if not conversation_id:
+                conversation_id = self._create_conversation(user_id)
             
-            if not week_context.strip():
-                week_context = "(No materials found for this week matching the file patterns.)"
-            
-            instructions = self._get_base_instructions() + f"""
-
-Currently studying: **Week {week_num}**
-
-The student may ask follow-up questions. Use the course materials below to answer accurately.
-
-{week_context}"""
-            
-            # Build input with conversation history (sliding window)
-            conversation_history = self.user_conversations.get(user_id, [])
-            input_messages = conversation_history + [{"role": "user", "content": prompt}]
-            
+            # Call Responses API with conversation context
             response = self.client.responses.create(
                 model=self.model,
-                input=input_messages,
-                instructions=instructions,
+                input=prompt,
+                instructions=self._get_base_instructions(),
+                conversation={"id": conversation_id},
                 max_output_tokens=self.max_output_tokens,
+                tools=[{
+                    "type": "file_search",
+                    "vector_store_ids": [self.vector_store_id]
+                }],
                 truncation="auto",
             )
             
-            # Update conversation history with sliding window
             reply = response.output_text or "I couldn't generate a response."
-            conversation_history.append({"role": "user", "content": prompt})
-            conversation_history.append({"role": "assistant", "content": reply})
-            
-            # Keep only last N turns (each turn = 2 messages: user + assistant)
-            max_messages = self.max_conversation_turns * 2
-            if len(conversation_history) > max_messages:
-                conversation_history = conversation_history[-max_messages:]
-            self.user_conversations[user_id] = conversation_history
-            
             return self._format_dm_response(reply, response.usage)
             
         except Exception as e:
             logging.error(f"DM response error: {e}")
+            # If conversation is broken, clear it so next message creates a new one
+            if "conversation" in str(e).lower():
+                self.user_conversations.pop(user_id, None)
             return f"Error: {str(e)}"
     
     def clear_user_session(self, user_id: str):
-        """Clear a user's session (week selection and conversation history)."""
-        self.user_weeks.pop(user_id, None)
+        """Clear a user's session (conversation)."""
         self.user_conversations.pop(user_id, None)
 
 
