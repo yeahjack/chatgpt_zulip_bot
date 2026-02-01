@@ -197,7 +197,7 @@ class ChatBot:
     
     def __init__(self, model: str, api_key: str, course_dir: str = None, 
                  file_patterns: list = None, vector_store_id: str = None,
-                 max_output_tokens: int = None):
+                 max_output_tokens: int = None, max_conversation_turns: int = 5):
         """
         Initialize the chatbot.
         
@@ -208,6 +208,7 @@ class ChatBot:
             file_patterns: Patterns to filter course files
             vector_store_id: OpenAI Vector Store ID for RAG
             max_output_tokens: Override for max output tokens
+            max_conversation_turns: Number of Q&A turns to keep in DM mode (0 = stateless)
         """
         self.model = model
         self.client = OpenAIClient(api_key=api_key)
@@ -217,8 +218,9 @@ class ChatBot:
         self.encoding = tiktoken.get_encoding(encoding_name)
         
         # User state for DM mode
-        self.user_response_ids = {}  # user_id -> last response ID
-        self.user_weeks = {}         # user_id -> week number
+        self.user_conversations = {}  # user_id -> list of {"role": str, "content": str}
+        self.user_weeks = {}          # user_id -> week number
+        self.max_conversation_turns = max_conversation_turns  # Keep last N exchanges (0 = stateless)
         
         # RAG settings
         self.vector_store_id = vector_store_id
@@ -249,21 +251,22 @@ Your role is to:
 - Guide students through proofs and problem-solving techniques
 - Be concise but thorough in explanations
 
-=== CRITICAL FORMATTING RULE FOR ZULIP ===
-You MUST format ALL math with spaces around $$ delimiters. This is NON-NEGOTIABLE.
-Do NOT use backticks around math. Only use $$ with spaces.
+=== CRITICAL MATH FORMATTING FOR ZULIP ===
+ALWAYS format math equations with SPACES around $$ delimiters.
+NEVER use backticks (`) around math - they break rendering!
 
-CORRECT format (note the spaces before and after $$):
-- "The formula is $$x^2$$ here" - spaces around $$
-- "where $$\\delta: Q \\times \\Sigma \\to Q$$ defines" - spaces around $$
-- "The set $$Q$$ is finite." - spaces around $$
+CORRECT (spaces around $$):
+- "The function $$f(x)$$ is defined"
+- "where $$\\delta: Q \\times \\Sigma \\to Q$$ is"
+- "The set $$Q$$ is finite"
 
-WRONG format (will break rendering):
-- "The formula is$$x^2$$here" - no spaces
-- "$$Q$$:" - no space after
+WRONG (DO NOT DO THIS):
+- ` $$f(x)$$ ` - NO backticks!
+- "function$$f(x)$$is" - NO missing spaces!
+- `$$Q$$` - NO backticks around math!
 
-Pattern: always write " $$content$$ " with a space before the opening $$ and after the closing $$.
-=== END CRITICAL FORMATTING RULE ==="""
+Rule: SPACE before $$, content, SPACE after $$. Never backticks.
+=== END MATH FORMATTING ==="""
     
     def _quote_message(self, text: str) -> str:
         """Quote a message using Zulip markdown.
@@ -373,7 +376,7 @@ Search for relevant content to answer the question accurately."""
         
         # Check for /reset command - clears conversation history only, keeps week
         if RESET_PATTERN.match(prompt_stripped):
-            self.user_response_ids.pop(user_id, None)  # Clear conversation only
+            self.user_conversations.pop(user_id, None)  # Clear conversation only
             week_num = self.user_weeks.get(user_id)
             if week_num:
                 return (
@@ -441,26 +444,29 @@ The student may ask follow-up questions. Use the course materials below to answe
 
 {week_context}"""
             
-            params = {
-                "model": self.model,
-                "input": prompt,
-                "instructions": instructions,
-                "max_output_tokens": self.max_output_tokens,
-                "store": True,
-                "truncation": "auto",
-            }
+            # Build input with conversation history (sliding window)
+            conversation_history = self.user_conversations.get(user_id, [])
+            input_messages = conversation_history + [{"role": "user", "content": prompt}]
             
-            # Chain with previous response if available
-            previous_id = self.user_response_ids.get(user_id)
-            if previous_id:
-                params["previous_response_id"] = previous_id
+            response = self.client.responses.create(
+                model=self.model,
+                input=input_messages,
+                instructions=instructions,
+                max_output_tokens=self.max_output_tokens,
+                truncation="auto",
+            )
             
-            response = self.client.responses.create(**params)
-            
-            # Store for conversation continuity
-            self.user_response_ids[user_id] = response.id
-            
+            # Update conversation history with sliding window
             reply = response.output_text or "I couldn't generate a response."
+            conversation_history.append({"role": "user", "content": prompt})
+            conversation_history.append({"role": "assistant", "content": reply})
+            
+            # Keep only last N turns (each turn = 2 messages: user + assistant)
+            max_messages = self.max_conversation_turns * 2
+            if len(conversation_history) > max_messages:
+                conversation_history = conversation_history[-max_messages:]
+            self.user_conversations[user_id] = conversation_history
+            
             return self._format_response(prompt, reply, response.usage)
             
         except Exception as e:
@@ -470,7 +476,7 @@ The student may ask follow-up questions. Use the course materials below to answe
     def clear_user_session(self, user_id: str):
         """Clear a user's session (week selection and conversation history)."""
         self.user_weeks.pop(user_id, None)
-        self.user_response_ids.pop(user_id, None)
+        self.user_conversations.pop(user_id, None)
 
 
 # Alias for backward compatibility

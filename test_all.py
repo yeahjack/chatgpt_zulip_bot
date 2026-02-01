@@ -244,9 +244,10 @@ def test_chatbot_responses_api_call():
         mock_client.responses.create.assert_called_once()
         call_kwargs = mock_client.responses.create.call_args.kwargs
         assert call_kwargs["model"] == "gpt-4o"
-        assert call_kwargs["input"] == "What is a DFA?"
+        # Input is now a list of messages (sliding window)
+        assert isinstance(call_kwargs["input"], list)
+        assert call_kwargs["input"][-1]["content"] == "What is a DFA?"
         assert "instructions" in call_kwargs
-        assert call_kwargs["store"] == True
 
 
 def test_chatbot_conversation_continuity():
@@ -279,12 +280,17 @@ def test_chatbot_conversation_continuity():
         
         # First message
         bot.get_dm_response("user1", "Hello")
-        assert bot.user_response_ids["user1"] == "resp_123"
+        assert "user1" in bot.user_conversations
+        assert len(bot.user_conversations["user1"]) == 2  # user + assistant
         
-        # Second message should include previous_response_id
+        # Second message should include conversation history in input
         bot.get_dm_response("user1", "Follow up question")
         second_call = mock_client.responses.create.call_args_list[1]
-        assert second_call.kwargs["previous_response_id"] == "resp_123"
+        input_messages = second_call.kwargs["input"]
+        assert len(input_messages) == 3  # previous user, previous assistant, new user
+        assert input_messages[0]["role"] == "user"
+        assert input_messages[1]["role"] == "assistant"
+        assert input_messages[2]["content"] == "Follow up question"
 
 
 def test_chatbot_error_handling():
@@ -328,7 +334,7 @@ def test_real_api_response(chatbot_with_api):
     assert isinstance(response, str)
     assert len(response) > 0
     # Clean up
-    chatbot_with_api.user_response_ids.pop("test_user", None)
+    chatbot_with_api.user_conversations.pop("test_user", None)
 
 
 # =============================================================================

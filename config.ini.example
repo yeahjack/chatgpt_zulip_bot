@@ -34,7 +34,7 @@ COURSE_DIR = DSAA3071TheoryOfComputation
 VECTOR_STORE_ID = vs_xxxxxxxxxxxx
 
 # =============================================================================
-# DM Mode: Weekly with Chaining
+# DM Mode: Weekly with Conversation Memory
 # =============================================================================
 # In DM, users must specify which week to study (e.g., "week 3")
 # Then they can ask follow-up questions about that week's content
@@ -42,6 +42,12 @@ VECTOR_STORE_ID = vs_xxxxxxxxxxxx
 # File patterns to filter which files to load per week (comma-separated)
 # Supports glob patterns: "*learning-sheet*", "*validation*"
 FILE_PATTERNS = *learning-sheet*, *validation*
+
+# Conversation memory: number of Q&A turns to keep (sliding window)
+# Higher = more context but more tokens; Lower = cheaper but less memory
+# Set to 0 to disable conversation memory entirely (stateless)
+# Default: 5 turns (10 messages)
+MAX_CONVERSATION_TURNS = 5
 
 # =============================================================================
 # Optional Settings

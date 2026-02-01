@@ -215,6 +215,9 @@ def serve(config_file: str = "config.ini"):
     # Vector store ID for RAG (required for stream mode)
     vector_store_id = settings.get("VECTOR_STORE_ID")
     
+    # Conversation memory: number of Q&A turns to keep (0 = stateless)
+    max_conversation_turns = int(settings.get("MAX_CONVERSATION_TURNS", "5"))
+    
     # Optional: override auto-detected max tokens
     max_output_tokens = None
     if "MAXIMUM_CONTENT_LENGTH" in settings:
@@ -240,6 +243,7 @@ def serve(config_file: str = "config.ini"):
         file_patterns=file_patterns,
         vector_store_id=vector_store_id,
         max_output_tokens=max_output_tokens,
+        max_conversation_turns=max_conversation_turns,
     )
     
     # Initialize Zulip bot
@@ -251,7 +255,8 @@ def serve(config_file: str = "config.ini"):
     # Print startup info
     print(f"ChatGPT bot starting (model: {model})")
     print(f"  Stream mode: RAG (vector store: {vector_store_id or 'NOT SET'})")
-    print(f"  DM mode: Weekly (user selects week, available: {chatbot.available_weeks})")
+    memory_desc = f"sliding window of {max_conversation_turns} turns" if max_conversation_turns > 0 else "stateless"
+    print(f"  DM mode: Weekly ({memory_desc}, weeks: {chatbot.available_weeks})")
     if file_patterns:
         print(f"  File patterns: {file_patterns}")
     
