@@ -549,7 +549,7 @@ new question'''
             assert "@_**user|123**" in result
             assert "@_**bot|456**" in result
     
-    def test_format_response_with_mention(self):
+    def test_format_stream_response_with_mention(self):
         """Test response formatting with user mention."""
         from chatgpt import ChatBot
         with patch('chatgpt.OpenAIClient'):
@@ -561,7 +561,7 @@ new question'''
             usage.output_tokens = 50
             usage.total_tokens = 150
             
-            result = bot._format_response(
+            result = bot._format_stream_response(
                 question="What is DFA?",
                 reply="A DFA is a deterministic finite automaton.",
                 usage=usage,
@@ -580,7 +580,7 @@ new question'''
             # Check tokens
             assert "Tokens: 100 (input) + 50 (output) = 150" in result
     
-    def test_format_response_without_url(self):
+    def test_format_stream_response_without_url(self):
         """Test response formatting without message URL."""
         from chatgpt import ChatBot
         with patch('chatgpt.OpenAIClient'):
@@ -591,7 +591,7 @@ new question'''
             usage.output_tokens = 50
             usage.total_tokens = 150
             
-            result = bot._format_response(
+            result = bot._format_stream_response(
                 question="Hello",
                 reply="Hi there!",
                 usage=usage,
@@ -603,7 +603,7 @@ new question'''
             assert "@_**user|123**:" in result
             assert "[said]" not in result
     
-    def test_format_response_without_sender(self):
+    def test_format_stream_response_without_sender(self):
         """Test response formatting without sender info."""
         from chatgpt import ChatBot
         with patch('chatgpt.OpenAIClient'):
@@ -614,7 +614,7 @@ new question'''
             usage.output_tokens = 50
             usage.total_tokens = 150
             
-            result = bot._format_response(
+            result = bot._format_stream_response(
                 question="Hello",
                 reply="Hi there!",
                 usage=usage

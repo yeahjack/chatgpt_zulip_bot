@@ -287,8 +287,8 @@ Rule: SPACE before $$, content, SPACE after $$. Never backticks.
         fence = '`' * max(4, max_backticks + 1)
         return f"{fence}quote\n{text}\n{fence}"
     
-    def _format_response(self, question: str, reply: str, usage, sender_name: str = None, sender_id: int = None, message_url: str = None) -> str:
-        """Format response with user mention, quoted question, and usage info."""
+    def _format_stream_response(self, question: str, reply: str, usage, sender_name: str = None, sender_id: int = None, message_url: str = None) -> str:
+        """Format stream response with user mention, quoted question, and usage info."""
         quoted_question = self._quote_message(question)
         
         # Add user mention in Zulip quote format: @_**Name|ID** [said](url):
@@ -301,6 +301,15 @@ Rule: SPACE before $$, content, SPACE after $$. Never backticks.
         
         return (
             f"{mention}{quoted_question}\n\n"
+            f"{reply}\n"
+            f"------\n"
+            f"Tokens: {usage.input_tokens:,} (input) + {usage.output_tokens:,} (output) "
+            f"= {usage.total_tokens:,}"
+        )
+    
+    def _format_dm_response(self, reply: str, usage) -> str:
+        """Format DM response with just reply and usage info (no quoting needed)."""
+        return (
             f"{reply}\n"
             f"------\n"
             f"Tokens: {usage.input_tokens:,} (input) + {usage.output_tokens:,} (output) "
@@ -352,7 +361,7 @@ Search for relevant content to answer the question accurately."""
             )
             
             reply = response.output_text or "I couldn't generate a response."
-            return self._format_response(quote_text, reply, response.usage, sender_name, sender_id, message_url)
+            return self._format_stream_response(quote_text, reply, response.usage, sender_name, sender_id, message_url)
             
         except Exception as e:
             logging.error(f"Stream response error: {e}")
@@ -467,7 +476,7 @@ The student may ask follow-up questions. Use the course materials below to answe
                 conversation_history = conversation_history[-max_messages:]
             self.user_conversations[user_id] = conversation_history
             
-            return self._format_response(prompt, reply, response.usage)
+            return self._format_dm_response(reply, response.usage)
             
         except Exception as e:
             logging.error(f"DM response error: {e}")
