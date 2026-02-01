@@ -420,13 +420,9 @@ Search for relevant content to answer the question accurately."""
         # Check if user has a week set
         if user_id not in self.user_weeks:
             if not self.available_weeks:
-                return (
-                    f"> {prompt}\n\n"
-                    f"No course materials found. Please check COURSE_DIR configuration."
-                )
+                return "No course materials found. Please check COURSE_DIR configuration."
             weeks_list = ", ".join(map(str, self.available_weeks))
             return (
-                f"> {prompt}\n\n"
                 f"Please specify which week you'd like to study.\n\n"
                 f"**Command:** `/week N` (e.g., `/week 3`)\n\n"
                 f"**Available weeks:** {weeks_list}"
@@ -480,7 +476,7 @@ The student may ask follow-up questions. Use the course materials below to answe
             
         except Exception as e:
             logging.error(f"DM response error: {e}")
-            return f"> {prompt}\n\nError: {str(e)}"
+            return f"Error: {str(e)}"
     
     def clear_user_session(self, user_id: str):
         """Clear a user's session (week selection and conversation history)."""
