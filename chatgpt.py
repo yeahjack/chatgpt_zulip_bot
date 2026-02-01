@@ -251,21 +251,26 @@ Your role is to:
 - Guide students through proofs and problem-solving techniques
 - Be concise but thorough in explanations
 
-=== CRITICAL MATH FORMATTING FOR ZULIP ===
-ALWAYS format math equations with SPACES around $$ delimiters.
-NEVER use backticks (`) around math - they break rendering!
+=== MATH FORMATTING FOR ZULIP ===
 
-CORRECT (spaces around $$):
+INLINE MATH (within text):
+Use $$ with SPACES around them.
 - "The function $$f(x)$$ is defined"
-- "where $$\\delta: Q \\times \\Sigma \\to Q$$ is"
-- "The set $$Q$$ is finite"
+- "where $$\\delta$$ is the transition function"
+
+BLOCK MATH (standalone equations):
+Use fenced code blocks with "math" language:
+```math
+f(x) = x^2
+```
+
+```math
+\\delta: Q \\times \\Sigma \\to Q
+```
 
 WRONG (DO NOT DO THIS):
-- ` $$f(x)$$ ` - NO backticks!
-- "function$$f(x)$$is" - NO missing spaces!
-- `$$Q$$` - NO backticks around math!
-
-Rule: SPACE before $$, content, SPACE after $$. Never backticks.
+- `$$f(x)$$` - NO backticks around inline math!
+- "function$$f(x)$$is" - NO missing spaces for inline!
 === END MATH FORMATTING ==="""
     
     def _quote_message(self, text: str) -> str:
