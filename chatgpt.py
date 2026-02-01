@@ -196,7 +196,7 @@ class ChatBot:
     
     def __init__(self, model: str, api_key: str, course_dir: str = None, 
                  file_patterns: list = None, vector_store_id: str = None,
-                 max_output_tokens: int = None):
+                 max_output_tokens: int = None, log_qa: bool = False):
         """
         Initialize the chatbot.
         
@@ -207,6 +207,7 @@ class ChatBot:
             file_patterns: Patterns to filter course files
             vector_store_id: OpenAI Vector Store ID for RAG
             max_output_tokens: Override for max output tokens
+            log_qa: Whether to log each Q&A pair
         """
         self.model = model
         self.client = OpenAIClient(api_key=api_key)
@@ -220,6 +221,9 @@ class ChatBot:
         
         # OpenAI resources
         self.vector_store_id = vector_store_id
+        
+        # Logging settings
+        self.log_qa = log_qa
         
         # Course materials (for week detection)
         self.file_patterns = file_patterns or []
@@ -357,6 +361,10 @@ Search for relevant content to answer the question accurately."""
             )
             
             reply = response.output_text or "I couldn't generate a response."
+            
+            if self.log_qa:
+                logging.info(f"[Stream Q&A] User={user_id}\nQ: {prompt}\nA: {reply}")
+            
             return self._format_stream_response(quote_text, reply, response.usage, sender_name, sender_id, message_url)
             
         except Exception as e:
@@ -420,6 +428,10 @@ Search for relevant content to answer the question accurately."""
             )
             
             reply = response.output_text or "I couldn't generate a response."
+            
+            if self.log_qa:
+                logging.info(f"[DM Q&A] User={user_id}\nQ: {prompt}\nA: {reply}")
+            
             return self._format_dm_response(reply, response.usage)
             
         except Exception as e:

@@ -220,6 +220,9 @@ def serve(config_file: str = "config.ini"):
     if "MAXIMUM_CONTENT_LENGTH" in settings:
         max_output_tokens = int(settings["MAXIMUM_CONTENT_LENGTH"])
     
+    # Optional: log Q&A pairs (default: true)
+    log_qa = settings.get("LOG_QA", "true").lower() in ("true", "1", "yes")
+    
     # Zulip settings
     zulip_config = settings["ZULIP_CONFIG"]
     user_id = int(settings["USER_ID"])
@@ -240,6 +243,7 @@ def serve(config_file: str = "config.ini"):
         file_patterns=file_patterns,
         vector_store_id=vector_store_id,
         max_output_tokens=max_output_tokens,
+        log_qa=log_qa,
     )
     
     # Initialize Zulip bot
@@ -253,6 +257,7 @@ def serve(config_file: str = "config.ini"):
     print(f"  Stream mode: Responses API + RAG")
     print(f"  DM mode: Responses API + Conversations")
     print(f"  Vector store: {vector_store_id or 'NOT SET'}")
+    print(f"  Q&A logging: {'enabled' if log_qa else 'disabled'}")
     
     if allowed_streams:
         print(f"  Access restricted to: {', '.join(allowed_streams)}")

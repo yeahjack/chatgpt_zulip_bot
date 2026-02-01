@@ -56,3 +56,7 @@ FILE_PATTERNS = *learning-sheet*, *validation*
 # =============================================================================
 # Override auto-detected max output tokens
 # MAXIMUM_CONTENT_LENGTH = 16384
+
+# Log each Q&A pair to the log file (useful for debugging/monitoring)
+# Set to true to log questions and responses, false to disable
+LOG_QA = true
