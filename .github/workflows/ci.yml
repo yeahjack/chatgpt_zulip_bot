@@ -29,6 +29,3 @@ jobs:
 
       - name: Run tests
         run: pytest
-        env:
-          API_VERSION: ${{ secrets.API_VERSION }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
